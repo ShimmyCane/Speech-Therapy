@@ -12,7 +12,8 @@ const TRY_COUNT = 5;
 const VOICE_RMS = 0.02;          // level that counts as "sound" (tune in M3)
 const PROGRESS_KEY = 'speech.progress.v1';
 const SETTINGS_KEY = 'speech.settings.v1';
-const PITCH = { low: 0.8, same: 1, high: 1.25 };
+const DIFFICULTY_KEY = 'speech.difficulty.v1';
+const RECORDED_EXTS = ['m4a', 'mp3', 'webm', 'ogg', 'wav'];   // formats the Voice Booth uploads
 const warnedVoice = new Set();   // warn once per language, not once per word
 
 const state = {
@@ -21,12 +22,14 @@ const state = {
   allLessons: [],       // everything loaded
   source: 'none',       // 'database' | 'bundled'
   sb: null,             // Supabase client, or null when offline
-  settings: { speed: 1, pitch: 'same', drafts: false, errors: true },
+  settings: { speed: 1, drafts: false, errors: true },
   progress: {},         // { 'en-2': 3 }  best average stars per lesson
   current: null,        // lesson being played
   tries: [],            // [{ stars, voicedMs, hiss, peak }]
   rec: null,            // live recording state
-  speaking: false,
+  phase: 'idle',        // idle | speaking | countdown | recording | reviewing
+  targetIndex: null,    // word the grown-up or Felix tapped for this try (null = next in order)
+  timer: null,          // countdown interval
 };
 
 /* ---------- Error trapping and visible log ---------- */
@@ -320,37 +323,110 @@ function speak(text, lang, rate, pitch, onEnd) {
   }
 }
 
-function listen() {
-  const lesson = state.current;
-  if (!lesson || !lesson.words.length) return;
-  if (state.speaking) {
-    window.speechSynthesis && window.speechSynthesis.cancel();
-    state.speaking = false;
-    return;
+/* A grown-up's recording of a word, if one has been uploaded. Keys match the Voice Booth: "en-2-3". */
+const clipUrls = new Map();   // key -> object URL, or null when no recording exists
+
+async function recordedUrl(lesson, index) {
+  const key = `${keyOf(lesson)}-${index + 1}`;
+  if (clipUrls.has(key)) return clipUrls.get(key);
+  let url = null;
+  if (state.sb) {
+    for (const ext of RECORDED_EXTS) {
+      try {
+        const { data, error } = await state.sb.storage.from(BUCKET).download(`clips/${key}.${ext}`);
+        if (!error && data) {
+          url = URL.createObjectURL(data);
+          break;
+        }
+      } catch (e) {
+        // No file in this format. Try the next one.
+      }
+    }
   }
-  const rate = state.settings.speed;
-  const pitch = PITCH[state.settings.pitch] || 1;
-  const lang = langCode(lesson.track);
-  state.speaking = true;
+  clipUrls.set(key, url);
+  return url;
+}
+
+function playWord(lesson, index, onEnd) {
+  const word = lesson.words[index];
+  highlightChip(index);
   document.getElementById('listen-note').textContent = 'Listen closely…';
-  let i = 0;
-  const next = () => {
-    if (i >= lesson.words.length) {
-      state.speaking = false;
-      document.getElementById('listen-note').textContent = 'Now you say it!';
+  const done = () => {
+    if (state.phase !== 'speaking') return;   // the lesson was left while the word was playing
+    document.getElementById('listen-note').textContent = '';
+    highlightChip(-1);
+    onEnd();
+  };
+  recordedUrl(lesson, index).then((url) => {
+    if (!url) {
+      speak(word, langCode(lesson.track), state.settings.speed, 1, done);
       return;
     }
-    const word = lesson.words[i++];
-    highlightChip(i - 1);
-    speak(word, lang, rate, pitch, () => setTimeout(next, 350));
-  };
-  next();
+    const audio = new Audio(url);
+    audio.playbackRate = state.settings.speed;
+    audio.preservesPitch = true;   // the pitch stays the same; only the pace changes
+    audio.onended = done;
+    audio.onerror = () => { trap('playback', new Error('Could not play the recording.')); done(); };
+    audio.play().catch((e) => { trap('playback', e, 'Check the device volume, then tap the word again.'); done(); });
+  });
 }
 
 function highlightChip(index) {
   document.querySelectorAll('#word-chips .chip').forEach((c, i) => {
     c.style.background = i === index ? 'var(--mint)' : 'var(--sun)';
   });
+}
+
+/* 3, 2, 1 (1.5 seconds), then recording starts on its own. */
+function countdownThenRecord() {
+  state.phase = 'countdown';
+  setControls();
+  const el = document.getElementById('countdown');
+  let n = 3;
+  el.textContent = String(n);
+  state.timer = setInterval(async () => {
+    n -= 1;
+    if (n > 0) {
+      el.textContent = String(n);
+      return;
+    }
+    clearInterval(state.timer);
+    state.timer = null;
+    el.textContent = '';
+    await startRecording();
+    state.phase = state.rec ? 'recording' : 'idle';
+    setControls();
+  }, 500);
+}
+
+function onChipTap(index) {
+  const lesson = state.current;
+  if (!lesson || state.phase !== 'idle') return;
+  state.phase = 'speaking';
+  state.targetIndex = index;
+  renderTry();
+  setControls();
+  playWord(lesson, index, countdownThenRecord);
+}
+
+/* Buttons follow the phase: one step at a time. */
+function setControls() {
+  const left = state.tries.length < TRY_COUNT;
+  const phase = state.phase;
+  document.querySelectorAll('#word-chips .chip').forEach((c) => {
+    c.disabled = !(left && phase === 'idle');
+  });
+  document.getElementById('record').disabled =
+    !left || phase === 'speaking' || phase === 'countdown' || phase === 'reviewing';
+  document.getElementById('next-try').disabled = phase !== 'reviewing';
+}
+
+function leaveLesson() {
+  clearInterval(state.timer);
+  state.timer = null;
+  window.speechSynthesis && window.speechSynthesis.cancel();
+  if (state.rec) stopRecording();
+  state.phase = 'idle';
 }
 
 /* ---------- Recording and the first-draft check ---------- */
@@ -470,39 +546,40 @@ function showScreen(name) {
 }
 
 function openLesson(lesson) {
-  if (state.speaking) {
-    window.speechSynthesis && window.speechSynthesis.cancel();
-    state.speaking = false;
-  }
+  leaveLesson();
   state.current = lesson;
   state.tries = [];
+  state.targetIndex = null;
   document.getElementById('lesson-title').textContent = `${lesson.lesson_no}. ${lesson.title}`;
   document.getElementById('lesson-count').textContent = `${lesson.track === 'en' ? 'English' : '中文'} · ${lesson.status}`;
   document.getElementById('mouth-text').textContent = lesson.mouth_text || lesson.focus || '';
   document.getElementById('listen-note').textContent = '';
+  document.getElementById('countdown').textContent = '';
 
   const chips = document.getElementById('word-chips');
   chips.innerHTML = '';
-  lesson.words.forEach((w) => {
-    const c = document.createElement('span');
+  lesson.words.forEach((w, i) => {
+    const c = document.createElement('button');
     c.className = 'chip';
+    c.type = 'button';
     c.textContent = w;
+    c.addEventListener('click', () => onChipTap(i));
     chips.appendChild(c);
   });
 
   renderTry();
+  setControls();
   showScreen('lesson');
 }
 
 function renderTry() {
   const lesson = state.current;
   const n = state.tries.length;
-  const word = lesson.words[n % lesson.words.length] || '';
+  const index = state.targetIndex !== null ? state.targetIndex : n % lesson.words.length;
+  const word = lesson.words[index] || '';
   document.getElementById('try-line').textContent = n < TRY_COUNT
     ? `Try ${n + 1} of ${TRY_COUNT}: say "${word}"`
     : 'All tries done!';
-  document.getElementById('record').disabled = n >= TRY_COUNT;
-  document.getElementById('next-try').disabled = true;
   document.getElementById('try-feedback').textContent = '';
   document.getElementById('try-stars').textContent = '';
   setRecordButton(false);
@@ -514,22 +591,24 @@ async function onRecordTap() {
   if (!state.current) return;
   if (!state.rec) {
     await startRecording();
+    state.phase = state.rec ? 'recording' : 'idle';
+    setControls();
     return;
   }
   const take = await stopRecording();
-  if (!take) return;
+  if (!take) {
+    state.phase = 'idle';
+    setControls();
+    return;
+  }
   const lesson = state.current;
   const stars = starsFor(take, lesson);
   state.tries.push({ stars, voicedMs: take.voicedMs, hiss: take.hiss, peak: take.peak });
   document.getElementById('try-stars').textContent = '⭐'.repeat(stars) || '·';
   document.getElementById('try-feedback').textContent = feedbackFor(take, stars, lesson);
-  document.getElementById('next-try').disabled = false;
-  document.getElementById('record').disabled = true;
-  if (state.tries.length >= TRY_COUNT) {
-    document.getElementById('next-try').textContent = 'See my stars ▶';
-  } else {
-    document.getElementById('next-try').textContent = 'Next try ▶';
-  }
+  document.getElementById('next-try').textContent = state.tries.length >= TRY_COUNT ? 'See my stars ▶' : 'Next try ▶';
+  state.phase = 'reviewing';
+  setControls();
 }
 
 async function onNextTry() {
@@ -537,8 +616,11 @@ async function onNextTry() {
     await finishLesson();
     return;
   }
+  state.phase = 'idle';
+  state.targetIndex = null;
   document.getElementById('next-try').textContent = 'Next try ▶';
   renderTry();
+  setControls();
 }
 
 async function finishLesson() {
@@ -552,6 +634,7 @@ async function finishLesson() {
   document.getElementById('done-stars').textContent = '⭐'.repeat(avg) || '·';
   document.getElementById('done-line').textContent =
     `${total} stars from ${TRY_COUNT} tries. Lesson ${lesson.lesson_no} is saved on this device.`;
+  renderDifficulty(lesson);
   showScreen('done');
 
   await saveSession(lesson, avg);
@@ -578,6 +661,78 @@ async function saveSession(lesson, avg) {
     showToast('Saved ✓');
   } catch (e) {
     trap('save session', e);
+  }
+}
+
+/* ---------- Difficulty rating (1 to 10, saved on this device) ---------- */
+
+function renderDifficulty(lesson) {
+  const box = document.getElementById('difficulty');
+  box.innerHTML = '';
+  document.getElementById('difficulty-note').textContent = '';
+  for (let n = 1; n <= 10; n++) {
+    const b = document.createElement('button');
+    b.className = 'btn sky';
+    b.textContent = String(n);
+    b.addEventListener('click', () => rateDifficulty(lesson, n));
+    box.appendChild(b);
+  }
+}
+
+function rateDifficulty(lesson, n) {
+  const all = readStore(DIFFICULTY_KEY, {});
+  const key = keyOf(lesson);
+  all[key] = [...(all[key] || []), { rating: n, at: new Date().toISOString() }];
+  writeStore(DIFFICULTY_KEY, all);
+  document.querySelectorAll('#difficulty button').forEach((b) => {
+    b.classList.toggle('on', Number(b.textContent) === n);
+  });
+  document.getElementById('difficulty-note').textContent = `Saved: ${n} out of 10.`;
+}
+
+/* ---------- New lesson (saved as a draft) ---------- */
+
+function openCreateForm(show) {
+  document.getElementById('create-form').classList.toggle('hidden', !show);
+  document.getElementById('open-create').classList.toggle('hidden', show);
+}
+
+async function createLesson(event) {
+  event.preventDefault();
+  const track = document.getElementById('new-track').value;
+  const lessonNo = Number(document.getElementById('new-no').value);
+  const title = document.getElementById('new-title').value.trim();
+  const focus = document.getElementById('new-focus').value.trim();
+  const mouthText = document.getElementById('new-mouth').value.trim();
+  const words = document.getElementById('new-words').value.split(',').map((w) => w.trim()).filter(Boolean);
+
+  if (!Number.isInteger(lessonNo) || lessonNo < 1 || lessonNo > 99 || !title || !words.length) {
+    trap('new lesson', new Error('Check the lesson number, title and words.'));
+    return;
+  }
+  if (state.allLessons.some((l) => l.track === track && l.lesson_no === lessonNo)) {
+    trap('new lesson', new Error(`Lesson ${lessonNo} already exists in this language.`));
+    return;
+  }
+  if (!state.sb) {
+    trap('new lesson', new Error('Not connected to the database, so the draft cannot be saved.'), 'Try again when the device is online.');
+    return;
+  }
+  try {
+    const { data, error } = await state.sb
+      .from('speech_lessons')
+      .insert({ track, lesson_no: lessonNo, variant: 'A', title, focus: focus || null, mouth_text: mouthText || null, draft_words: words, status: 'draft' })
+      .select('id')
+      .single();
+    if (error) throw error;
+    state.allLessons.push({ id: data.id, track, lesson_no: lessonNo, title, focus, words, status: 'draft', s_focus: false, mouth_text: mouthText });
+    logLine('ok', `Draft lesson ${track} ${lessonNo} saved.`);
+    showToast('Draft saved ✓');
+    document.getElementById('create-form').reset();
+    openCreateForm(false);
+    renderHome();
+  } catch (e) {
+    trap('save draft lesson', e);
   }
 }
 
@@ -625,9 +780,6 @@ function applySettingsToUI() {
     const v = k === '075' ? 0.75 : k === '05' ? 0.5 : 1;
     document.getElementById(`speed-${k}`).classList.toggle('on', s.speed === v);
   });
-  ['low', 'same', 'high'].forEach((p) => {
-    document.getElementById(`pitch-${p}`).classList.toggle('on', s.pitch === p);
-  });
 }
 
 function setSpeed(v) {
@@ -636,16 +788,10 @@ function setSpeed(v) {
   applySettingsToUI();
 }
 
-function setPitch(p) {
-  state.settings.pitch = p;
-  writeStore(SETTINGS_KEY, state.settings);
-  applySettingsToUI();
-}
-
 function wire() {
-  document.getElementById('go-home').addEventListener('click', () => { showScreen('home'); renderHome(); });
-  document.getElementById('back-home').addEventListener('click', () => { window.speechSynthesis && window.speechSynthesis.cancel(); showScreen('home'); renderHome(); });
-  document.getElementById('done-home').addEventListener('click', () => { showScreen('home'); renderHome(); });
+  document.getElementById('go-home').addEventListener('click', () => { leaveLesson(); showScreen('home'); renderHome(); });
+  document.getElementById('back-home').addEventListener('click', () => { leaveLesson(); showScreen('home'); renderHome(); });
+  document.getElementById('done-home').addEventListener('click', () => { leaveLesson(); showScreen('home'); renderHome(); });
   document.getElementById('again').addEventListener('click', () => openLesson(state.current));
   document.getElementById('play-today').addEventListener('click', () => {
     const t = todayLesson();
@@ -654,16 +800,15 @@ function wire() {
   document.getElementById('track-en').addEventListener('click', () => { state.track = 'en'; renderHome(); });
   document.getElementById('track-zh').addEventListener('click', () => { state.track = 'zh'; renderHome(); });
 
-  document.getElementById('listen').addEventListener('click', listen);
   document.getElementById('record').addEventListener('click', onRecordTap);
+  document.getElementById('open-create').addEventListener('click', () => openCreateForm(true));
+  document.getElementById('cancel-create').addEventListener('click', () => openCreateForm(false));
+  document.getElementById('create-form').addEventListener('submit', createLesson);
   document.getElementById('next-try').addEventListener('click', onNextTry);
 
   document.getElementById('speed-075').addEventListener('click', () => setSpeed(0.75));
   document.getElementById('speed-05').addEventListener('click', () => setSpeed(0.5));
   document.getElementById('speed-1').addEventListener('click', () => setSpeed(1));
-  document.getElementById('pitch-low').addEventListener('click', () => setPitch('low'));
-  document.getElementById('pitch-same').addEventListener('click', () => setPitch('same'));
-  document.getElementById('pitch-high').addEventListener('click', () => setPitch('high'));
 
   const drawer = document.getElementById('drawer');
   document.getElementById('gear').addEventListener('click', () => drawer.classList.toggle('hidden'));
