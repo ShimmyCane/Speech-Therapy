@@ -168,7 +168,7 @@ async function loadLessons() {
     try {
       const { data, error } = await state.sb
         .from('speech_lessons')
-        .select('id,track,lesson_no,variant,title,focus,draft_words,status')
+        .select('id,track,lesson_no,variant,title,focus,mouth_text,draft_words,status')
         .order('lesson_no', { ascending: true });
       if (error) throw error;
       if (data && data.length) {
@@ -183,7 +183,7 @@ async function loadLessons() {
             words: row.draft_words || [],
             status: row.status,
             s_focus: extra.s_focus,
-            mouth_text: extra.mouth_text,
+            mouth_text: row.mouth_text || extra.mouth_text,
           };
         });
         state.source = 'database';

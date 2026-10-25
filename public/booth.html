@@ -64,6 +64,22 @@
     .toggle { display: flex; align-items: center; gap: 10px; font-size: 18px; min-height: 44px; }
     .toggle input { width: 24px; height: 24px; }
     .toggle select { font-size: 18px; min-height: 44px; }
+    .lesson-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+    .pill { font-weight: 800; font-size: 15px; padding: 4px 12px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; }
+    .pill.live { background: var(--mint); }
+    .details { display: grid; gap: 10px; margin: 12px 0; padding-bottom: 12px; border-bottom: 2px dashed #d9d4ea; }
+    .details label { display: grid; gap: 4px; font-size: 16px; }
+    .details input, .details textarea, .word-input, .add-word input {
+      font: inherit; font-size: 18px; color: var(--ink); padding: 8px 10px; width: 100%;
+      border: 3px solid var(--ink); border-radius: 12px; background: #fff;
+    }
+    .details textarea { min-height: 70px; }
+    .word-input { font-size: 24px; padding: 6px 10px; }
+    .word-main { display: grid; gap: 2px; min-width: 0; }
+    .add-word { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .add-word input { flex: 1 1 200px; }
+    button.remove { background: #ffd6d6; min-width: 48px; }
+    button:disabled, input:disabled, textarea:disabled { opacity: 0.45; cursor: not-allowed; }
     .gear {
       position: fixed; right: 16px; bottom: 16px; width: 64px; height: 64px; min-height: 64px;
       border-radius: 50%; font-size: 30px; padding: 0; z-index: 20;
@@ -88,7 +104,7 @@
     <h1>🎙️ Voice Booth</h1>
     <p class="note">For grown-ups: record each word in your own voice, clearly, with no background noise. Listen back, then save the file.</p>
     <p class="note">Clips must be audio and 10 seconds or less. Longer ones are flagged and not saved.</p>
-    <p class="note">Upload sends the clip to Felix's app. Save keeps a copy on this device.</p>
+    <p class="note">When you are signed in, each recording is sent to Felix's app. Publish a lesson once every word is in the app.</p>
   </div>
 
   <div class="card">
@@ -113,8 +129,31 @@
   </div>
 
   <div class="card">
-    <h2 id="lesson-heading"></h2>
+    <div class="lesson-head">
+      <h2 id="lesson-heading"></h2>
+      <span class="pill" id="status-pill"></span>
+    </div>
+    <div class="details">
+      <label>Lesson name
+        <input id="lesson-title-input" type="text">
+      </label>
+      <label>Sounds it focuses on
+        <input id="lesson-focus-input" type="text">
+      </label>
+      <label>Mouth text (what Felix reads about the mouth)
+        <textarea id="lesson-mouth-input"></textarea>
+      </label>
+      <div class="row">
+        <button id="save-details" type="button">Save lesson details</button>
+        <button id="toggle-publish" type="button">Publish lesson</button>
+      </div>
+      <p class="note" id="edit-note"></p>
+    </div>
     <div id="word-list"></div>
+    <div class="add-word">
+      <input id="new-word" type="text" placeholder="add a word">
+      <button id="add-word" type="button">Add word</button>
+    </div>
   </div>
 
 </div>
