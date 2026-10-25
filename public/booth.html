@@ -77,6 +77,8 @@
     .errors { z-index: 10; }
     .signin { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; }
     .signin input { font: inherit; font-size: 18px; padding: 8px 10px; min-width: 240px; border: 3px solid var(--ink); border-radius: 12px; }
+    .signin { transition: opacity 0.6s ease; }
+    .signin.fading { opacity: 0; }
   </style>
 </head>
 <body>
@@ -131,6 +133,6 @@
 <div class="errors" id="error-panel" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="booth.js"></script>
+<script src="booth.js?v=2"></script>
 </body>
 </html>

@@ -22,6 +22,7 @@ let chunks = [];
 let startedAt = 0;
 let sb = null;
 let signedIn = false;           // true once a family member has signed in (uploads need it)
+let hideSignIn = null;          // timer that hides the sign-in form after sign-in
 
 /* ---------- Error trapping ---------- */
 
@@ -471,7 +472,14 @@ async function refreshAuth() {
   status.textContent = session
     ? `Signed in as ${session.user.email}. Uploads are on.`
     : 'Not signed in. Uploads are off until you sign in.';
-  document.getElementById('signin-form').classList.toggle('hidden', signedIn);
+  const form = document.getElementById('signin-form');
+  clearTimeout(hideSignIn);
+  if (signedIn) {
+    form.classList.add('fading');
+    hideSignIn = setTimeout(() => form.classList.add('hidden'), 1000);
+  } else {
+    form.classList.remove('fading', 'hidden');
+  }
   document.getElementById('sign-out').hidden = !signedIn;
   renderLesson();
 }
