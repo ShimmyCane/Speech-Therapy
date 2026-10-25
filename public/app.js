@@ -64,7 +64,7 @@ function trap(area, err, hint) {
   logLine('fail', `${area}: ${msg}`);
   const h = hint || hintFor(err);
   if (h) logLine('info', `  → ${h}`);
-  showToast(`${area} failed. See the error panel.`, true);
+  showToast(`${area} failed. ${state.settings.errors ? 'See the error panel.' : 'Turn on "Show errors panel" in ⚙️ to see why.'}`, true);
   console.error(area, err);
 }
 

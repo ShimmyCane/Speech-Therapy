@@ -60,6 +60,11 @@
     .errors .fail { color: var(--error); font-weight: 800; }
     .errors .ok { color: #2e7d32; font-weight: 800; }
     .errors .info { color: var(--muted); }
+    .errors.hidden, .hidden { display: none !important; }
+    .toggle { display: flex; align-items: center; gap: 10px; font-size: 18px; min-height: 44px; }
+    .toggle input { width: 24px; height: 24px; }
+    .signin { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; }
+    .signin input { font: inherit; font-size: 18px; padding: 8px 10px; min-width: 240px; border: 3px solid var(--ink); border-radius: 12px; }
   </style>
 </head>
 <body>
@@ -69,6 +74,24 @@
     <p class="note">For grown-ups: record each word in your own voice, clearly, with no background noise. Listen back, then save the file.</p>
     <p class="note">Clips must be audio and 10 seconds or less. Longer ones are flagged and not saved.</p>
     <p class="note">Upload sends the clip to Felix's app. Save keeps a copy on this device.</p>
+  </div>
+
+  <div class="card">
+    <h2>Sign in to upload</h2>
+    <p class="note" id="auth-status">Checking sign-in…</p>
+    <div class="signin" id="signin-row">
+      <input id="email" type="email" autocomplete="email" placeholder="your family email">
+      <button id="send-link">Email me a sign-in link</button>
+    </div>
+    <div class="signin">
+      <button id="sign-out" hidden>Sign out</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Booth settings</h2>
+    <label class="toggle"><input type="checkbox" id="opt-trim" checked> Trim the last half second of each recording (removes the click or buzz at the end)</label>
+    <label class="toggle"><input type="checkbox" id="opt-errors" checked> Show the error panel at the bottom</label>
   </div>
 
   <div class="card">
