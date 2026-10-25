@@ -553,6 +553,7 @@ function openLesson(lesson) {
   document.getElementById('lesson-title').textContent = `${lesson.lesson_no}. ${lesson.title}`;
   document.getElementById('lesson-count').textContent = `${lesson.track === 'en' ? 'English' : '中文'} · ${lesson.status}`;
   document.getElementById('mouth-text').textContent = lesson.mouth_text || lesson.focus || '';
+  MouthGuide.render(document.getElementById('mouth-guide'), lesson);
   document.getElementById('listen-note').textContent = '';
   document.getElementById('countdown').textContent = '';
 
