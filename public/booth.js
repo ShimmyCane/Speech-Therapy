@@ -1,6 +1,6 @@
-/* Voice Booth — grown-ups record or add each word, check it, then keep it on this device (Save)
- * or send it to the family storage (Upload). Felix's app plays uploaded clips.
- * Only audio is accepted, and clips over MAX_SECONDS are flagged and not kept.
+/* Voice Booth — grown-ups record each word, edit the lesson, and publish it once every word is ready.
+ * Recordings upload to the family storage automatically when signed in. Only audio is accepted;
+ * clips over MAX_SECONDS are flagged and not kept.
  */
 'use strict';
 
@@ -8,11 +8,12 @@ const SUPABASE_URL = 'https://twvqvutrcobedvuhnzxq.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_eqUo8HEdEB1hMQM4CpSVqA_9i6b0qCo';
 const BUCKET = 'speech-therapy';
 const MAX_SECONDS = 10;
-const DONE_KEY = 'speech.booth.v1';
+const CLIP_EXTS = ['m4a', 'mp3', 'webm', 'ogg', 'wav'];
 const SETTINGS_KEY = 'speech.booth.settings.v1';
 let settings = { trimSeconds: 0.5, errors: true };   // trimSeconds 0 means off
-const clips = new Map();        // key -> { blob, url, mime }
+const clips = new Map();        // key -> { blob, url, mime } recorded or added on this device
 const flags = new Map();        // key -> message shown on that word's row
+const storedKeys = new Set();   // keys whose clip is already in the family storage (what Felix's app plays)
 let lessons = [];
 let current = null;
 let recorder = null;
@@ -20,7 +21,7 @@ let recordingKey = null;
 let chunks = [];
 let startedAt = 0;
 let sb = null;
-let signedIn = false;           // true once a family member has signed in (uploads need it)
+let signedIn = false;           // true once a family member has signed in
 let hideSignIn = null;          // timer that hides the sign-in form after sign-in
 
 /* ---------- Error trapping ---------- */
@@ -61,43 +62,15 @@ function initSupabase() {
     }
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   } catch (e) {
-    trap('database connection', e, 'Uploads are off until the device is online.');
+    trap('database connection', e, 'Uploads and editing are off until the device is online.');
     sb = null;
-  }
-}
-
-/* ---------- Saved progress (per device) ---------- */
-
-function readDone() {
-  try {
-    return JSON.parse(localStorage.getItem(DONE_KEY) || '{}');
-  } catch (e) {
-    trap('saved progress', e, 'This browser blocks saving. Progress lasts only until the tab closes.');
-    return {};
-  }
-}
-
-function writeDone(done) {
-  try {
-    localStorage.setItem(DONE_KEY, JSON.stringify(done));
-  } catch (e) {
-    trap('saving progress', e, 'Could not save on this device (storage blocked or full).');
   }
 }
 
 /* ---------- Lessons ---------- */
 
-async function loadLessons() {
-  try {
-    logLine('info', 'Loading lessons…');
-    const res = await fetch('lessons.json', { cache: 'no-cache', signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error(`lessons.json returned HTTP ${res.status}`);
-    const json = await res.json();
-    lessons = json.lessons || [];
-    logLine('ok', `Loaded ${lessons.length} lessons.`);
-  } catch (e) {
-    trap('lessons', e, 'Open the app through its web address, not as a local file.');
-  }
+function canEdit() {
+  return signedIn && !!sb && !!current && current.id !== null;
 }
 
 function lessonKey(l) {
@@ -109,48 +82,285 @@ function clipKey(lesson, index) {
   return `${lessonKey(lesson)}-${index + 1}`;
 }
 
+// Signed in: lesson rows from the database, drafts included. Otherwise: the copy bundled with the app, read-only.
+async function loadLessons() {
+  if (signedIn && sb) {
+    try {
+      const { data, error } = await withTimeout(
+        sb.from('speech_lessons')
+          .select('id,track,lesson_no,title,focus,mouth_text,draft_words,status')
+          .order('track', { ascending: true })
+          .order('lesson_no', { ascending: true }),
+        'Loading lessons from the database',
+      );
+      if (error) throw error;
+      lessons = data.map((r) => ({
+        id: r.id,
+        track: r.track,
+        lesson_no: r.lesson_no,
+        title: r.title,
+        focus: r.focus || '',
+        mouth_text: r.mouth_text || '',
+        words: r.draft_words || [],
+        status: r.status,
+      }));
+      logLine('ok', `Loaded ${lessons.length} lessons from the database.`);
+      return;
+    } catch (e) {
+      trap('lessons from database', e, 'Showing the copy bundled with the app. Editing is off until this works.');
+    }
+  }
+  try {
+    const res = await fetch('lessons.json', { cache: 'no-cache', signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error(`lessons.json returned HTTP ${res.status}`);
+    const json = await res.json();
+    lessons = (json.lessons || []).map((l) => ({
+      ...l,
+      id: null,
+      focus: l.focus || '',
+      mouth_text: l.mouth_text || '',
+      words: [...(l.words || [])],
+    }));
+    logLine('ok', `Loaded ${lessons.length} lessons from the app copy (read-only).`);
+  } catch (e) {
+    trap('lessons', e, 'Open the booth through its web address, not as a local file.');
+  }
+}
+
+// Which clips already exist in the family storage. Felix's app plays these; anything else falls back to the device voice.
+async function refreshStored() {
+  storedKeys.clear();
+  if (!signedIn || !sb) return;
+  try {
+    const { data, error } = await withTimeout(sb.storage.from(BUCKET).list('clips', { limit: 1000 }), 'Checking recordings in the family storage');
+    if (error) throw error;
+    data.forEach((f) => storedKeys.add(f.name.replace(/\.[^.]+$/, '')));
+  } catch (e) {
+    trap('recordings check', e, 'Showing only the recordings made on this device.');
+  }
+}
+
 function fillPicker() {
   const pick = document.getElementById('lesson-pick');
+  const keep = current ? lessonKey(current) : null;
   pick.innerHTML = '';
   lessons.forEach((l) => {
     const opt = document.createElement('option');
     opt.value = lessonKey(l);
-    opt.textContent = `${l.track === 'en' ? 'EN' : 'ZH'} ${l.lesson_no}. ${l.title}`;
+    opt.textContent = `${l.track === 'en' ? 'EN' : 'ZH'} ${l.lesson_no}. ${l.title}${l.status === 'published' ? '' : ' (draft)'}`;
     pick.appendChild(opt);
   });
-  pick.addEventListener('change', () => {
-    current = lessons.find((l) => lessonKey(l) === pick.value) || null;
-    renderLesson();
-  });
-  current = lessons[0] || null;
+  current = lessons.find((l) => lessonKey(l) === keep) || lessons[0] || null;
   if (current) pick.value = lessonKey(current);
 }
 
-function renderLesson() {
-  const list = document.getElementById('word-list');
-  list.innerHTML = '';
-  if (!current) {
-    document.getElementById('lesson-heading').textContent = 'No lesson selected';
+function wirePicker() {
+  document.getElementById('lesson-pick').addEventListener('change', (e) => {
+    current = lessons.find((l) => lessonKey(l) === e.target.value) || null;
+    fillDetails();
+    renderLesson();
+  });
+}
+
+function fillDetails() {
+  if (!current) return;
+  document.getElementById('lesson-title-input').value = current.title;
+  document.getElementById('lesson-focus-input').value = current.focus;
+  document.getElementById('lesson-mouth-input').value = current.mouth_text;
+}
+
+// Loads lessons and recordings for the current sign-in state, then redraws the whole booth.
+async function reloadAll() {
+  await loadLessons();
+  await refreshStored();
+  fillPicker();
+  fillDetails();
+  renderLesson();
+}
+
+function renderDetails() {
+  document.getElementById('lesson-heading').textContent = current ? current.title : 'No lesson selected';
+  const editable = canEdit();
+  ['lesson-title-input', 'lesson-focus-input', 'lesson-mouth-input', 'save-details', 'toggle-publish', 'new-word', 'add-word'].forEach((id) => {
+    document.getElementById(id).disabled = !editable;
+  });
+  const pill = document.getElementById('status-pill');
+  const published = !!current && current.status === 'published';
+  pill.textContent = current ? (published ? 'Published' : 'Draft') : '';
+  pill.classList.toggle('live', published);
+  document.getElementById('toggle-publish').textContent = published ? 'Take back to draft' : 'Publish lesson';
+  let note = '';
+  if (current && current.id === null) note = 'This copy is read-only. Sign in to edit lessons in the database.';
+  else if (current && !signedIn) note = 'Sign in to edit this lesson.';
+  document.getElementById('edit-note').textContent = note;
+}
+
+async function saveDetails() {
+  if (!canEdit()) return;
+  const title = document.getElementById('lesson-title-input').value.trim();
+  if (!title) {
+    trap('lesson', new Error('The lesson needs a title.'));
     return;
   }
-  document.getElementById('lesson-heading').textContent = current.title;
+  const focus = document.getElementById('lesson-focus-input').value.trim();
+  const mouthText = document.getElementById('lesson-mouth-input').value.trim();
+  try {
+    const { error } = await withTimeout(
+      sb.from('speech_lessons').update({ title, focus: focus || null, mouth_text: mouthText || null }).eq('id', current.id),
+      'Saving lesson details',
+    );
+    if (error) throw error;
+    Object.assign(current, { title, focus, mouth_text: mouthText });
+    logLine('ok', 'Lesson details saved.');
+    fillPicker();
+  } catch (e) {
+    trap('save lesson details', e, 'Check the sign-in and the lesson table permissions.');
+  }
+  renderLesson();
+}
 
-  const done = readDone();
+async function saveWords() {
+  renderLesson();
+  if (!canEdit()) return;
+  try {
+    const { error } = await withTimeout(
+      sb.from('speech_lessons').update({ draft_words: current.words }).eq('id', current.id),
+      'Saving words',
+    );
+    if (error) throw error;
+    logLine('ok', 'Words saved.');
+  } catch (e) {
+    trap('save words', e, 'Check the sign-in and the lesson table permissions.');
+  }
+}
+
+async function addWord() {
+  if (!canEdit()) return;
+  const input = document.getElementById('new-word');
+  const text = input.value.trim();
+  if (!text) return;
+  current.words.push(text);
+  input.value = '';
+  await saveWords();
+}
+
+async function renameWord(i, value) {
+  const text = value.trim();
+  if (!text) {
+    trap('word', new Error('A word cannot be empty.'));
+    renderLesson();
+    return;
+  }
+  if (text === current.words[i]) return;
+  current.words[i] = text;
+  logLine('info', `Renamed to "${text}". If the recording is a different word, record it again.`);
+  await saveWords();
+}
+
+// Removing a word moves the recordings after it up one place, so those clips are deleted and must be recorded again.
+async function removeWord(i) {
+  const word = current.words[i];
+  if (!window.confirm(`Remove "${word}"? The recordings for the words after it are deleted, so those words must be recorded again.`)) return;
+  await clearClipsFrom(current, i);
+  current.words.splice(i, 1);
+  await saveWords();
+}
+
+async function clearClipsFrom(lesson, from) {
+  const paths = [];
+  for (let i = from; i < lesson.words.length; i++) {
+    const key = clipKey(lesson, i);
+    const old = clips.get(key);
+    if (old) URL.revokeObjectURL(old.url);
+    clips.delete(key);
+    flags.delete(key);
+    storedKeys.delete(key);
+    if (canEdit()) CLIP_EXTS.forEach((ext) => paths.push(`clips/${key}.${ext}`));
+  }
+  if (!paths.length) return;
+  try {
+    const { error } = await withTimeout(sb.storage.from(BUCKET).remove(paths), 'Deleting old recordings');
+    if (error) throw error;
+    logLine('ok', `Deleted ${paths.length} old recording files.`);
+  } catch (e) {
+    trap('delete recordings', e, 'Felix may still hear the old sound for these words. Record them again.');
+  }
+}
+
+// Publishing needs every word recorded and in the family storage, so Felix never hears a gap.
+async function togglePublish() {
+  if (!canEdit()) return;
+  const publish = current.status !== 'published';
+  if (publish) {
+    const missing = current.words.filter((_, i) => !storedKeys.has(clipKey(current, i)));
+    if (!current.words.length || missing.length) {
+      trap(
+        'publish',
+        new Error(current.words.length ? `Still to record: ${missing.join(', ')}` : 'Add at least one word first.'),
+        'Every word needs a recording in the family storage before the lesson can be published.',
+      );
+      renderLesson();
+      return;
+    }
+  }
+  const status = publish ? 'published' : 'draft';
+  try {
+    const { error } = await withTimeout(
+      sb.from('speech_lessons').update({ status }).eq('id', current.id),
+      publish ? 'Publishing' : 'Taking back to draft',
+    );
+    if (error) throw error;
+    current.status = status;
+    logLine('ok', publish ? `"${current.title}" is published. Felix can see it in the app.` : `"${current.title}" is a draft again.`);
+    fillPicker();
+  } catch (e) {
+    trap('publish', e, 'Check the sign-in and the lesson table permissions.');
+  }
+  renderLesson();
+}
+
+function renderLesson() {
+  renderDetails();
+  renderWords();
+  updateProgress();
+}
+
+function renderWords() {
+  const list = document.getElementById('word-list');
+  list.innerHTML = '';
+  if (!current) return;
+  const editable = canEdit();
+
   current.words.forEach((word, i) => {
     const key = clipKey(current, i);
     const row = document.createElement('div');
     row.className = 'word-row';
 
-    const text = document.createElement('div');
-    text.className = 'text';
-    text.innerHTML = `${escapeHtml(word)} ${done[key] ? '<span class="done-mark">✓ ready</span>' : ''}`;
+    const main = document.createElement('div');
+    main.className = 'word-main';
+    const input = document.createElement('input');
+    input.className = 'word-input';
+    input.type = 'text';
+    input.value = word;
+    input.disabled = !editable;
+    input.setAttribute('aria-label', `Word ${i + 1}`);
+    input.addEventListener('change', () => renameWord(i, input.value));
+    main.appendChild(input);
+
+    const status = document.createElement('div');
+    status.className = 'note';
     if (flags.has(key)) {
-      const flag = document.createElement('span');
-      flag.className = 'flag';
-      flag.textContent = `⚠ ${flags.get(key)}`;
-      text.appendChild(flag);
+      status.className = 'flag';
+      status.textContent = `⚠ ${flags.get(key)}`;
+    } else if (storedKeys.has(key)) {
+      status.textContent = '✓ in the app';
+    } else if (clips.has(key)) {
+      status.textContent = signedIn ? 'sending…' : '⚠ not sent yet. Sign in to send it to the app.';
+    } else {
+      status.textContent = 'not recorded yet';
     }
-    row.appendChild(text);
+    main.appendChild(status);
+    row.appendChild(main);
 
     const actions = document.createElement('div');
     actions.className = 'actions';
@@ -159,7 +369,7 @@ function renderLesson() {
     rec.className = 'rec';
     rec.textContent = recordingKey === key ? '⏹ Stop' : '🎤 Record';
     rec.classList.toggle('on', recordingKey === key);
-    rec.addEventListener('click', () => toggleRecord(key, word, i));
+    rec.addEventListener('click', () => toggleRecord(key, word));
     actions.appendChild(rec);
 
     const add = document.createElement('button');
@@ -169,7 +379,7 @@ function renderLesson() {
     picker.type = 'file';
     picker.accept = 'audio/*';
     picker.addEventListener('change', () => {
-      if (picker.files && picker.files[0]) onFilePicked(key, word, i, picker.files[0]);
+      if (picker.files && picker.files[0]) onFilePicked(key, word, picker.files[0]);
       picker.value = '';
     });
     add.addEventListener('click', () => picker.click());
@@ -183,36 +393,27 @@ function renderLesson() {
     play.addEventListener('click', () => playClip(key));
     actions.appendChild(play);
 
-    const save = document.createElement('button');
-    save.className = 'save';
-    save.textContent = '💾 Save';
-    save.disabled = !clips.has(key);
-    save.addEventListener('click', () => saveClip(key, word, i));
-    actions.appendChild(save);
-
-    const upload = document.createElement('button');
-    upload.className = 'upload';
-    upload.textContent = '☁ Upload';
-    upload.disabled = !signedIn || !clips.has(key);
-    upload.addEventListener('click', () => uploadClip(key, word, i));
-    actions.appendChild(upload);
+    const remove = document.createElement('button');
+    remove.className = 'remove';
+    remove.textContent = '✕';
+    remove.title = 'Remove this word';
+    remove.disabled = !editable;
+    remove.addEventListener('click', () => removeWord(i));
+    actions.appendChild(remove);
 
     row.appendChild(actions);
     list.appendChild(row);
   });
-  updateProgress();
 }
 
 function updateProgress() {
-  const done = readDone();
-  const total = lessons.reduce((s, l) => s + l.words.length, 0);
-  const count = Object.keys(done).length;
-  document.getElementById('progress-line').textContent =
-    `${count} of ${total} words ready on this device.`;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const progress = document.getElementById('progress-line');
+  if (!current) {
+    progress.textContent = '';
+    return;
+  }
+  const inApp = current.words.filter((_, i) => storedKeys.has(clipKey(current, i))).length;
+  progress.textContent = `${inApp} of ${current.words.length} words are in the app.`;
 }
 
 /* ---------- Length and type checks ---------- */
@@ -237,19 +438,19 @@ async function lengthOf(blob, fallbackSeconds) {
   }
 }
 
-/* Keep a clip only when it is audio and short enough. Otherwise flag the word and keep nothing. */
+/* Keep a clip only when it is audio and short enough. Then send it to the family storage if signed in. */
 async function keepClip(key, word, blob, mime, fallbackSeconds) {
   const seconds = await lengthOf(blob, fallbackSeconds);
   if (seconds === null) {
     flags.set(key, 'Could not read this as audio.');
     trap(`"${word}"`, new Error('Not a readable audio file.'), 'Choose a sound file (MP3, M4A, WAV or a recording).');
-    renderLesson();
+    renderWords();
     return false;
   }
   if (seconds > MAX_SECONDS) {
     flags.set(key, `${seconds.toFixed(1)} s. Keep it to ${MAX_SECONDS} s or less.`);
     trap(`"${word}" is too long`, new Error(`${seconds.toFixed(1)} seconds`), `Record it again, shorter than ${MAX_SECONDS} seconds.`);
-    renderLesson();
+    renderWords();
     return false;
   }
 
@@ -257,11 +458,13 @@ async function keepClip(key, word, blob, mime, fallbackSeconds) {
   const old = clips.get(key);
   if (old) URL.revokeObjectURL(old.url);
   clips.set(key, { blob, url: URL.createObjectURL(blob), mime });
-  const done = readDone();
-  done[key] = true;
-  writeDone(done);
-  logLine('ok', `"${word}" ready (${seconds.toFixed(1)} s).`);
-  renderLesson();
+  logLine('ok', `"${word}" recorded (${seconds.toFixed(1)} s).`);
+  if (signedIn) {
+    await uploadClip(key, word);
+  } else {
+    logLine('info', `"${word}" is not sent yet. Sign in to send it to Felix's app.`);
+  }
+  renderWords();
   return true;
 }
 
@@ -273,11 +476,11 @@ function extFor(mime) {
   return 'webm';
 }
 
-async function onFilePicked(key, word, index, file) {
+async function onFilePicked(key, word, file) {
   if (!file.type.startsWith('audio/')) {
     flags.set(key, `Not an audio file (${file.type || 'unknown type'}).`);
     trap(`"${word}"`, new Error('Only audio files are accepted.'), 'Choose an MP3, M4A, WAV or other sound file.');
-    renderLesson();
+    renderWords();
     return;
   }
   await keepClip(key, word, file, file.type, undefined);
@@ -291,7 +494,7 @@ function pickMime() {
   return options.find((m) => MediaRecorder.isTypeSupported(m)) || '';
 }
 
-async function toggleRecord(key, word, index) {
+async function toggleRecord(key, word) {
   if (recorder && recordingKey === key) {
     recorder.stop();
     return;
@@ -323,7 +526,7 @@ async function toggleRecord(key, word, index) {
       recordingKey = null;
       if (!blob.size) {
         trap('recording', new Error(`"${word}" came out empty.`), 'Check the microphone and try again.');
-        renderLesson();
+        renderWords();
         return;
       }
       const kept = await maybeTrim(blob);
@@ -332,7 +535,7 @@ async function toggleRecord(key, word, index) {
     startedAt = Date.now();
     recorder.start();
     logLine('info', `Recording "${word}". Tap Stop when done (${MAX_SECONDS} s at most).`);
-    renderLesson();
+    renderWords();
   } catch (e) {
     const denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
     trap('microphone', e, denied ? 'Allow the microphone for this site in Settings, then try again.' : null);
@@ -352,40 +555,24 @@ function playClip(key) {
   }
 }
 
-function saveClip(key, word, index) {
+async function uploadClip(key, word) {
   const clip = clips.get(key);
-  if (!clip) return;
+  if (!clip || !sb) return;
+  const ext = extFor(clip.mime);
+  const path = `clips/${key}.${ext}`;
   try {
-    const name = `${current.track}-${String(current.lesson_no).padStart(2, '0')}-${index + 1}-${word}.${extFor(clip.mime)}`;
-    const a = document.createElement('a');
-    a.href = clip.url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    logLine('ok', `Saved ${name} to this device.`);
-  } catch (e) {
-    trap('save', e, 'Downloads are blocked here. Try again from Safari or Chrome.');
-  }
-}
-
-async function uploadClip(key, word, index) {
-  const clip = clips.get(key);
-  if (!clip) return;
-  if (!sb) {
-    trap('upload', new Error('Not connected to the family storage.'), 'Try again when the device is online.');
-    return;
-  }
-  const path = `clips/${key}.${extFor(clip.mime)}`;
-  try {
-    const { error } = await sb.storage.from(BUCKET).upload(path, clip.blob, {
-      upsert: true,
-      contentType: clip.mime || 'audio/webm',
-    });
+    const { error } = await withTimeout(
+      sb.storage.from(BUCKET).upload(path, clip.blob, { upsert: true, contentType: clip.mime || 'audio/webm' }),
+      `Sending "${word}"`,
+    );
     if (error) throw error;
-    logLine('ok', `Uploaded "${word}" as ${path}. Felix's app will play it next time it loads.`);
+    // Remove older files in other formats, so Felix's app cannot play a stale one.
+    const stale = CLIP_EXTS.filter((e) => e !== ext).map((e) => `clips/${key}.${e}`);
+    await withTimeout(sb.storage.from(BUCKET).remove(stale), 'Clearing older versions').catch(() => {});
+    storedKeys.add(key);
+    logLine('ok', `"${word}" sent to Felix's app.`);
   } catch (e) {
-    trap(`upload "${word}"`, e, 'Uploads need a family sign-in if the storage rules ask for one. Save keeps a copy on this device.');
+    trap(`send "${word}"`, e, 'Sending needs a family sign-in. Check the storage permissions if this keeps failing.');
   }
 }
 
@@ -476,15 +663,15 @@ function applySettings() {
   document.getElementById('error-panel').classList.toggle('hidden', !settings.errors);
 }
 
-/* ---------- Sign-in (uploads need a family member's account) ---------- */
+/* ---------- Sign-in (editing and uploads need a family member's account) ---------- */
 
 // Takes the session as given. Never call sb.auth from inside an auth-change callback (it deadlocks).
 function applyAuth(session) {
   const status = document.getElementById('auth-status');
   signedIn = !!session;
   status.textContent = session
-    ? `Signed in as ${session.user.email}. Uploads are on.`
-    : 'Not signed in. Uploads are off until you sign in.';
+    ? `Signed in as ${session.user.email}. Editing and uploads are on.`
+    : 'Not signed in. Editing and uploads are off until you sign in.';
   const form = document.getElementById('signin-form');
   clearTimeout(hideSignIn);
   if (signedIn) {
@@ -494,12 +681,11 @@ function applyAuth(session) {
     form.classList.remove('fading', 'hidden');
   }
   document.getElementById('sign-out').hidden = !signedIn;
-  renderLesson();
 }
 
 async function refreshAuth() {
   if (!sb) {
-    document.getElementById('auth-status').textContent = 'Not connected. Uploads are off.';
+    document.getElementById('auth-status').textContent = 'Not connected. Editing and uploads are off.';
     return;
   }
   logLine('info', 'Checking sign-in…');
@@ -528,7 +714,7 @@ async function signIn(event) {
     const { error } = await withTimeout(sb.auth.signInWithPassword({ email, password }), 'Sign-in');
     if (error) throw error;
     document.getElementById('password').value = '';
-    logLine('ok', 'Signed in. Uploads are on.');
+    logLine('ok', 'Signed in.');
   } catch (e) {
     trap('sign-in', e, 'Check the email and password. A grown-up can reset the password in Supabase.');
   } finally {
@@ -564,7 +750,22 @@ function wireControls() {
   document.getElementById('gear').addEventListener('click', () => openDrawer(document.getElementById('drawer').classList.contains('hidden')));
   document.getElementById('close-drawer').addEventListener('click', () => openDrawer(false));
   document.getElementById('sign-out').addEventListener('click', signOut);
-  if (sb) sb.auth.onAuthStateChange((_event, session) => applyAuth(session));
+  document.getElementById('save-details').addEventListener('click', saveDetails);
+  document.getElementById('toggle-publish').addEventListener('click', togglePublish);
+  document.getElementById('add-word').addEventListener('click', addWord);
+  document.getElementById('new-word').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addWord();
+    }
+  });
+  // Reload when the sign-in changes. Deferred, so the database call never runs inside the auth callback.
+  if (sb) {
+    sb.auth.onAuthStateChange((_event, session) => {
+      applyAuth(session);
+      setTimeout(() => reloadAll().catch((e) => trap('reload', e)), 0);
+    });
+  }
 }
 
 /* ---------- Boot ---------- */
@@ -577,13 +778,14 @@ async function boot() {
   }
   initSupabase();
   wireControls();
-  await loadLessons();
-  fillPicker();
-  renderLesson();
-  refreshAuth().catch((e) => {
-    document.getElementById('auth-status').textContent = 'Could not check sign-in. Uploads are off.';
+  wirePicker();
+  try {
+    await refreshAuth();
+  } catch (e) {
+    document.getElementById('auth-status').textContent = 'Could not check sign-in. Editing and uploads are off.';
     trap('sign-in check', e, 'Check the connection, then reload the page.');
-  });
+  }
+  await reloadAll();
 }
 
 boot();
