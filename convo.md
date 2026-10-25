@@ -31,3 +31,11 @@ Questions and answers from review. Each answer is a decision to build against.
    3. **Review and star.**
    - The Listen button is removed.
    - The larger font applies to **both English and Chinese** words. Chinese is 3× the current size, and English is enlarged to match.
+
+## To do (testing)
+
+- [ ] Roll back the draft-lesson testing notes if they no longer apply. Check the ⚙️ "Try draft lessons (not yet approved)" toggle and the home-page message "No lessons are published yet. A grown-up can try drafts from ⚙️." Now that the Voice Booth is in ⚙️ and new lessons can be created, these may need new wording or removal.
+- [ ] Test on the iPad: tap a word to hear it, the 3-2-1 countdown, and recording.
+- [ ] Test uploads from the Voice Booth and check the Supabase storage rules allow them.
+- [ ] Test creating a new draft lesson and check the table rules allow it.
+- [ ] Switch GitHub Pages from the feature branch to `main`.

@@ -75,6 +75,14 @@
     button.btn.sun { background: var(--sun); }
     button.btn.grape { background: var(--grape); color: #fff; }
     button.btn.small { min-height: 48px; font-size: 16px; padding: 8px 14px; }
+    a.btn {
+      display: inline-flex; align-items: center; min-height: 56px; padding: 10px 18px;
+      font-weight: 700; font-size: 18px; color: var(--ink); text-decoration: none;
+      background: var(--sky); border: 3px solid var(--ink); border-radius: 14px 24px 14px 24px;
+      box-shadow: 4px 4px 0 var(--ink);
+    }
+    a.btn.small { min-height: 48px; font-size: 16px; padding: 8px 14px; }
+    a.btn.sun { background: var(--sun); }
     button.btn.on { outline: 4px solid var(--ink); outline-offset: 2px; }
     button.btn.recording { background: var(--coral); animation: pulse 1s infinite; }
     @keyframes pulse { 50% { transform: scale(1.03); } }
@@ -293,6 +301,11 @@
   <div class="card">
     <h2>Progress</h2>
     <div class="row"><button class="btn small pink" id="reset-progress">Reset Felix's progress</button></div>
+  </div>
+  <div class="card">
+    <h2>Voice Booth</h2>
+    <p class="note">Record or add each word's sound, then upload it for Felix's app.</p>
+    <div class="row"><a class="btn small sun" href="public/booth.html">🎙️ Open Voice Booth</a></div>
   </div>
   <div class="row" style="justify-content:flex-end">
     <button class="btn small" id="close-drawer">Close</button>
