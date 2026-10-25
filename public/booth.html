@@ -40,6 +40,10 @@
     button.rec.on { background: var(--coral); }
     button.play { background: var(--mint); }
     button.save { background: var(--sun); }
+    button.upload { background: var(--grape); color: #fff; }
+    button.add { background: var(--sky); }
+    .flag { color: var(--error); font-weight: 800; font-size: 16px; display: block; }
+    input[type=file] { display: none; }
     .word-row {
       display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
       border-bottom: 2px dashed #d9d4ea; padding: 10px 0;
@@ -63,7 +67,8 @@
   <div class="card">
     <h1>🎙️ Voice Booth</h1>
     <p class="note">For grown-ups: record each word in your own voice, clearly, with no background noise. Listen back, then save the file.</p>
-    <p class="note">Model voices are kept only in this browser until uploads are switched on.</p>
+    <p class="note">Clips must be audio and 10 seconds or less. Longer ones are flagged and not saved.</p>
+    <p class="note">Upload sends the clip to Felix's app. Save keeps a copy on this device.</p>
   </div>
 
   <div class="card">
@@ -79,15 +84,11 @@
     <div id="word-list"></div>
   </div>
 
-  <div class="card">
-    <h2>Upload</h2>
-    <p class="note">Uploading to the family storage needs a signed-in family account. That step is not switched on yet, so use Save for now.</p>
-    <button id="upload" disabled>Upload to family storage (later)</button>
-  </div>
 </div>
 
 <div class="errors" id="error-panel" aria-live="polite"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="booth.js"></script>
 </body>
 </html>

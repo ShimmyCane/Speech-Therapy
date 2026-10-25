@@ -90,10 +90,24 @@
     .step.locked { opacity: 0.4; cursor: not-allowed; }
     .step.draft small { display: block; font-size: 12px; font-family: "Patrick Hand", cursive; font-weight: 400; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
-    .chip {
-      padding: 8px 14px; border: 3px solid var(--ink); border-radius: 999px;
-      background: var(--sun); font-size: 22px;
+    /* Word chips: 3x the old 22px, for both English and Chinese */
+    button.chip {
+      font: inherit; font-weight: 800; font-size: 66px; line-height: 1.1; color: var(--ink);
+      padding: 4px 18px; border: 3px solid var(--ink); border-radius: 999px;
+      background: var(--sun); cursor: pointer; touch-action: manipulation;
+      max-width: 100%; overflow-wrap: anywhere;
     }
+    button.chip:disabled { opacity: 0.45; cursor: not-allowed; }
+    .countdown { font-family: "Orbitron", sans-serif; font-weight: 800; font-size: 48px; text-align: center; min-height: 56px; margin: 0; }
+    .difficulty { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
+    .difficulty button.btn { min-height: 52px; min-width: 0; padding: 6px 0; font-size: 20px; }
+    .create-form { display: grid; gap: 10px; margin-top: 12px; }
+    .create-form label { display: grid; gap: 4px; font-size: 16px; }
+    .create-form input, .create-form select, .create-form textarea {
+      font: inherit; font-size: 18px; color: var(--ink); padding: 8px 10px;
+      border: 3px solid var(--ink); border-radius: 12px; background: #fff; width: 100%;
+    }
+    .create-form textarea { min-height: 72px; }
     .mouth {
       background: #ffe3ec; border: 3px dashed var(--ink); border-radius: 12px;
       padding: 10px 12px; font-size: 18px; margin-top: 8px;
@@ -173,6 +187,39 @@
       <p class="note">Finish one step to open the next. You can always repeat.</p>
       <div class="grid-path" id="path"></div>
     </div>
+
+    <div class="card">
+      <h2>New lesson</h2>
+      <p class="note">New lessons start as drafts. Only grown-ups see drafts until they are approved.</p>
+      <button class="btn sky" id="open-create">➕ Create lesson</button>
+      <form class="create-form hidden" id="create-form">
+        <label>Track
+          <select id="new-track">
+            <option value="en">English</option>
+            <option value="zh">中文 (Chinese)</option>
+          </select>
+        </label>
+        <label>Lesson number
+          <input id="new-no" type="number" min="1" max="99" required>
+        </label>
+        <label>Title
+          <input id="new-title" type="text" required>
+        </label>
+        <label>Sounds it focuses on
+          <input id="new-focus" type="text">
+        </label>
+        <label>Mouth picture text
+          <textarea id="new-mouth"></textarea>
+        </label>
+        <label>Words (separated by commas)
+          <input id="new-words" type="text" required>
+        </label>
+        <div class="row">
+          <button class="btn mint" type="submit" id="save-create">Save draft</button>
+          <button class="btn small" type="button" id="cancel-create">Cancel</button>
+        </div>
+      </form>
+    </div>
   </section>
 
   <!-- LESSON -->
@@ -187,25 +234,20 @@
     </div>
 
     <div class="card">
-      <h2>1. Listen</h2>
-      <div class="chips" id="word-chips"></div>
-      <div class="row">
-        <button class="btn sky" id="speed-075">0.75×</button>
+      <h2>1. Tap a word to hear it</h2>
+      <div class="row" style="margin-bottom:6px">
         <button class="btn sky" id="speed-05">0.5×</button>
+        <button class="btn sky" id="speed-075">0.75×</button>
         <button class="btn sky on" id="speed-1">1×</button>
       </div>
-      <div class="row" style="margin-top:8px">
-        <button class="btn sun" id="pitch-low">Lower</button>
-        <button class="btn sun on" id="pitch-same">Same</button>
-        <button class="btn sun" id="pitch-high">Higher</button>
-      </div>
-      <button class="btn big grape" id="listen" style="margin-top:12px">🔊 Listen</button>
+      <div class="chips" id="word-chips"></div>
       <p class="note" id="listen-note"></p>
     </div>
 
     <div class="card">
       <h2>2. Say it</h2>
       <p id="try-line">Try 1 of 5</p>
+      <p class="countdown" id="countdown" aria-live="assertive"></p>
       <button class="btn big pink" id="record">🎤 Tap to start</button>
       <p class="note" id="record-note">Tap once to start, tap again to stop.</p>
       <div class="stars" id="try-stars" aria-live="polite"></div>
@@ -222,6 +264,9 @@
       <h2>Great job!</h2>
       <div class="stars" id="done-stars"></div>
       <p id="done-line"></p>
+      <p>How hard was this lesson? (1 = easy, 10 = very hard)</p>
+      <div class="difficulty" id="difficulty"></div>
+      <p class="note" id="difficulty-note"></p>
       <div class="row" style="justify-content:center; margin-top:10px">
         <button class="btn sky" id="again">Play again</button>
         <button class="btn mint" id="done-home">Home</button>
