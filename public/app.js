@@ -142,7 +142,7 @@ function initSupabase() {
 
 async function loadBundled() {
   try {
-    const res = await fetch('lessons.json', { cache: 'no-cache' });
+    const res = await fetch('public/lessons.json', { cache: 'no-cache' });
     if (!res.ok) throw new Error(`lessons.json returned HTTP ${res.status}`);
     const json = await res.json();
     return json.lessons || [];
