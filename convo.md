@@ -1,18 +1,33 @@
-# Felix's Sounds: open questions
+# Felix's Sounds: decisions
 
-Five questions to answer before the next round of changes. Replies can be short.
+Questions and answers from review. Each answer is a decision to build against.
 
 1. **Where do recordings live?**
-   When a grown-up re-records a word in the editing page, should the clip be saved to the shared Supabase storage bucket (`speech-therapy`, which needs sign-in) so Felix's app plays it, or is a download to this device enough for now? Right now the app only speaks with the device's built-in voice, and the Voice Booth never reaches Felix's app.
+   Re-recorded clips are saved to the shared Supabase storage bucket (`speech-therapy`, which needs sign-in), and Felix's app plays them.
+   - *Open point:* the Voice Booth currently has no sign-in, so the upload step needs one. See question 2.
 
 2. **Who can open the editing page?**
-   The editing page (the Voice Booth) is at `/public/booth.html`. Once Pages is live, anyone with the link can open it. Should it be hidden behind a simple PIN, or is an unlinked URL enough?
+   Anyone with the link can open it and edit words and recordings. No PIN.
+   - Only audio files are accepted.
+   - Clips longer than **10 seconds** are not accepted. They are flagged instead of saved.
 
 3. **What do speed and pitch mean for Felix?**
-   Speed (0.75×, 0.5×, 1×) changes how fast the voice speaks. Pitch (Lower, Same, Higher) changes how high or low the voice sounds. Should these stay as grown-up settings in the gear panel, or move onto the lesson screen where Felix can pick them? Should the labels change to something a 6-year-old reads easily, such as "Slow / Normal" and "Deep / Normal / High"?
+   - Speed order is **0.5×, 0.75×, 1×**, in that order on screen.
+   - Pitch stays the same. Speed changes the pace only, and the voice's pitch does not shift with it.
+   - Speed and pitch controls move onto the lesson screen where Felix can pick them.
+   - Labels are not yet decided. The current `Lower / Same / Higher` labels are kept until a decision is made.
 
 4. **What does a new lesson need?**
-   For the "Create lesson" button on the front page, should a new lesson ask only for: track (English or 中文), lesson number, title, the sounds it focuses on, the mouth picture text, and the words? Should it start as a draft that only grown-ups see until someone approves it?
+   - New lessons start as a **draft** that only grown-ups see until someone approves them.
+   - The "Create lesson" button stays on the front page.
+   - Felix's lesson suggestions are based on how well he has been doing. This needs a ranking library or framework for lesson results.
+   - At the end of each lesson, Felix (or a grown-up) rates how difficult it was on a **1–10** scale. The rating feeds the ranking.
+   - *Still to confirm:* the fields a new lesson asks for (track, lesson number, title, focus sounds, mouth text, words).
 
 5. **What happens when Felix taps a word?**
-   You asked for tapping a word to hear it, and for the Listen button to go. Should tapping a word play it (at the chosen speed and pitch) and then move Felix on to "Say it", so the lesson still runs Listen → Say → Stars? And for the 3× Chinese words, should the bigger size apply only to Chinese lessons, or to English words too?
+   Lesson flow is streamlined to:
+   1. **Tap a word** and hear it (at the chosen speed and pitch).
+   2. **Countdown 3, 2, 1** (1.5 seconds in total), then record.
+   3. **Review and star.**
+   - The Listen button is removed.
+   - The larger font applies to **both English and Chinese** words. Chinese is 3× the current size, and English is enlarged to match.
