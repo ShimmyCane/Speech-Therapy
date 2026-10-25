@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#9b5de5">
+  <title>Voice Booth</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Patrick+Hand&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #2b2d42; --paper: #fffdf5; --sun: #ffd23f; --pink: #ff6b9d;
+      --sky: #4cc9f0; --mint: #6bd8a0; --grape: #9b5de5; --coral: #ff7b54;
+      --error: #d32f2f; --muted: #6b6f86;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--paper);
+      background-image: radial-gradient(var(--grape) 1.5px, transparent 1.6px);
+      background-size: 26px 26px; color: var(--ink);
+      font-family: "Quicksand", sans-serif; font-weight: 700;
+      padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px 260px;
+    }
+    h1, h2 { font-family: "Orbitron", sans-serif; font-weight: 800; margin: 0 0 8px; }
+    h1 { font-size: 24px; } h2 { font-size: 18px; }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    .card {
+      background: #fff; border: 3px solid var(--ink); border-radius: 14px 36px 14px 36px;
+      padding: 14px; box-shadow: 4px 4px 0 var(--ink); margin-bottom: 14px;
+    }
+    .note { font-family: "Patrick Hand", cursive; font-weight: 400; color: var(--muted); font-size: 18px; margin: 4px 0; }
+    select, button {
+      font: inherit; font-weight: 700; color: var(--ink); min-height: 48px;
+      border: 3px solid var(--ink); border-radius: 14px; background: var(--sky);
+      box-shadow: 3px 3px 0 var(--ink); padding: 8px 14px; cursor: pointer; touch-action: manipulation;
+    }
+    select { background: #fff; font-size: 16px; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.rec { background: var(--pink); min-width: 150px; }
+    button.rec.on { background: var(--coral); }
+    button.play { background: var(--mint); }
+    button.save { background: var(--sun); }
+    .word-row {
+      display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+      border-bottom: 2px dashed #d9d4ea; padding: 10px 0;
+    }
+    .word-row .text { font-size: 26px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+    .done-mark { color: #2e7d32; font-weight: 800; }
+    .errors {
+      position: fixed; left: 0; right: 0; bottom: 0; max-height: 36vh; overflow: auto;
+      background: #fff0f0; border-top: 3px solid var(--error); padding: 8px 12px 16px;
+      font: 15px ui-monospace, Menlo, monospace; font-weight: 400;
+    }
+    .errors .line { padding: 4px 0; border-bottom: 1px dashed #e7b5b5; }
+    .errors .fail { color: var(--error); font-weight: 800; }
+    .errors .ok { color: #2e7d32; font-weight: 800; }
+    .errors .info { color: var(--muted); }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>🎙️ Voice Booth</h1>
+    <p class="note">For grown-ups: record each word in your own voice, clearly, with no background noise. Listen back, then save the file.</p>
+    <p class="note">Model voices are kept only in this browser until uploads are switched on.</p>
+  </div>
+
+  <div class="card">
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+      <label for="lesson-pick"><strong>Lesson</strong></label>
+      <select id="lesson-pick"></select>
+    </div>
+    <p class="note" id="progress-line"></p>
+  </div>
+
+  <div class="card">
+    <h2 id="lesson-heading"></h2>
+    <div id="word-list"></div>
+  </div>
+
+  <div class="card">
+    <h2>Upload</h2>
+    <p class="note">Uploading to the family storage needs a signed-in family account. That step is not switched on yet, so use Save for now.</p>
+    <button id="upload" disabled>Upload to family storage (later)</button>
+  </div>
+</div>
+
+<div class="errors" id="error-panel" aria-live="polite"></div>
+
+<script src="booth.js"></script>
+</body>
+</html>

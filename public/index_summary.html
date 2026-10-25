@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Felix's Sounds: code summary</title>
+  <style>
+    :root { --ink:#2b2d42; --paper:#fffdf5; --sun:#ffd23f; --pink:#ff6b9d; --sky:#4cc9f0; --mint:#6bd8a0; --grape:#9b5de5; --coral:#ff7b54; --muted:#6b6f86; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:Quicksand, system-ui, sans-serif; font-weight:600; padding:16px; line-height:1.4; }
+    h1,h2 { font-family:Orbitron, sans-serif; margin:0 0 8px; }
+    h1 { font-size:24px; } h2 { font-size:18px; margin-top:22px; }
+    .card { background:#fff; border:3px solid var(--ink); border-radius:14px 36px 14px 36px; box-shadow:4px 4px 0 var(--ink); padding:14px; margin-bottom:14px; }
+    .flow { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    .box { border:3px solid var(--ink); border-radius:12px; padding:8px 12px; box-shadow:3px 3px 0 var(--ink); font-size:14px; }
+    .arrow { font-weight:800; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th, td { text-align:left; padding:6px 8px; border-bottom:2px dashed #d9d4ea; vertical-align:top; }
+    th { font-family:Orbitron, sans-serif; font-size:12px; }
+    code { font-family:ui-monospace, Menlo, monospace; font-size:13px; background:#f3efff; padding:1px 4px; border-radius:6px; }
+    .tbl { overflow-x:auto; }
+    .muted { color:var(--muted); font-weight:500; font-size:14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Felix's Sounds</h1>
+    <p class="muted">Summary of <code>index.html</code> (Felix's app) and <code>app.js</code>. Line numbers match the files as of commit <code>9707863</code>.</p>
+  </div>
+
+  <div class="card">
+    <h2>How the pieces talk</h2>
+    <div class="flow">
+      <div class="box" style="background:var(--sun)">Felix taps Play</div><span class="arrow">→</span>
+      <div class="box" style="background:var(--sky)">openLesson()</div><span class="arrow">→</span>
+      <div class="box" style="background:var(--mint)">speak() model voice</div><span class="arrow">→</span>
+      <div class="box" style="background:var(--pink)">startRecording() mic</div><span class="arrow">→</span>
+      <div class="box" style="background:var(--grape);color:#fff">analyseTake() + starsFor()</div><span class="arrow">→</span>
+      <div class="box" style="background:var(--coral)">finishLesson()</div><span class="arrow">→</span>
+      <div class="box" style="background:#fff">saveSession() Supabase or device only</div>
+    </div>
+    <p class="muted">Every failure on the way goes through <code>trap()</code> into the bottom error panel, with a plain hint.</p>
+  </div>
+
+  <div class="card tbl">
+    <h2>Table of contents</h2>
+    <table>
+      <tr><th>Lines</th><th>Section</th><th>What it does</th></tr>
+      <tr><td>10–16</td><td>Constants</td><td>Supabase URL and public key, bucket, tables, try count, voice threshold, storage keys, pitch presets, one-time voice warnings.</td></tr>
+      <tr><td>18–31</td><td><code>state</code></td><td>Everything the app remembers while open: track, lessons, settings, progress, current lesson, tries, live recording.</td></tr>
+      <tr><td>32–107</td><td>Error trapping</td><td><code>logLine</code>, <code>hintFor</code>, <code>trap</code>, the error panel, the header pill and toasts. Global <code>error</code> and <code>unhandledrejection</code> listeners.</td></tr>
+      <tr><td>108–127</td><td>Storage helpers</td><td><code>readStore</code> and <code>writeStore</code> wrap localStorage in try/catch for private browsing.</td></tr>
+      <tr><td>128–214</td><td>Setup and lessons</td><td><code>initSupabase</code>, <code>loadBundled</code> (lessons.json), <code>loadLessons</code> (database first, bundled fallback), visibility and unlock rules.</td></tr>
+      <tr><td>215–277</td><td>Home screen</td><td><code>renderHome</code> builds the 15-step path per track; <code>todayLesson</code> picks what Play today opens.</td></tr>
+      <tr><td>278–355</td><td>Model voice</td><td><code>speak</code> wraps speechSynthesis (rate and pitch); <code>listen</code> plays the words in order and lights the chips.</td></tr>
+      <tr><td>356–462</td><td>Recording and check</td><td><code>hissRatio</code> (energy above 4 kHz), <code>startRecording</code> and <code>stopRecording</code> (mic, AnalyserNode), <code>analyseTake</code>, <code>starsFor</code>, <code>feedbackFor</code>.</td></tr>
+      <tr><td>463–583</td><td>Lesson flow</td><td><code>openLesson</code>, <code>renderTry</code>, <code>onRecordTap</code>, <code>onNextTry</code>, <code>finishLesson</code>, <code>saveSession</code> (speech_sessions and speech_attempts).</td></tr>
+      <tr><td>584–617</td><td>Database check</td><td><code>runDiagnostics</code> counts rows in each table and tests the storage bucket, then reports sign-in state.</td></tr>
+      <tr><td>618–690</td><td>Settings and wiring</td><td>Speed and pitch buttons, the ⚙️ drawer, progress reset, all event listeners.</td></tr>
+      <tr><td>691–end</td><td><code>boot()</code></td><td>Loads settings and progress, wires the UI, starts Supabase, loads lessons, renders home.</td></tr>
+      <tr><td>index.html 11–146</td><td>Styles</td><td>Family Habits tokens (:root), buttons, cards, path grid, gear drawer, error panel.</td></tr>
+      <tr><td>index.html 157–258</td><td>Markup</td><td>Home, lesson and done screens; gear drawer; error panel; toast.</td></tr>
+    </table>
+  </div>
+
+  <div class="card tbl">
+    <h2>Variables you can tweak</h2>
+    <table>
+      <tr><th>Name</th><th>Where</th><th>What it does</th><th>How to tweak it</th></tr>
+      <tr><td><code>TRY_COUNT</code></td><td>app.js 11</td><td>Tries per lesson.</td><td>5 by default. Lower for shorter sessions (10 minutes a day fits 5).</td></tr>
+      <tr><td><code>VOICE_RMS</code></td><td>app.js 12</td><td>Loudness that counts as "sound".</td><td>Raise if room noise counts as a try; lower if quiet voices are missed. Tune in M3.</td></tr>
+      <tr><td><code>PITCH</code></td><td>app.js 15</td><td>Pitch multipliers for Lower, Same, Higher.</td><td>Change 0.8 and 1.25 to make the pitch gap bigger or smaller.</td></tr>
+      <tr><td><code>PROGRESS_KEY</code>, <code>SETTINGS_KEY</code></td><td>app.js 13–14</td><td>localStorage keys.</td><td>Change the version suffix to reset everyone's saved progress.</td></tr>
+      <tr><td><code>starsFor()</code> thresholds</td><td>app.js 439–447</td><td>200 ms, 300–2000 ms, hiss 0.12 and 0.2, peak 0.05.</td><td>Make these gentler (lower hiss numbers) or stricter after calibration.</td></tr>
+      <tr><td><code>hissRatio()</code> cut-off</td><td>app.js 358–368</td><td>4000 Hz.</td><td>Move down for softer S sounds, up for sharper ones.</td></tr>
+      <tr><td><code>state.settings.speed</code></td><td>app.js 18–31</td><td>Default playback speed.</td><td>Set to 0.75 for a slower default for Felix.</td></tr>
+      <tr><td><code>--sun</code>, <code>--pink</code>, <code>--sky</code>, etc.</td><td>index.html 14–24</td><td>Family Habits palette.</td><td>Edit once and every card, button and path step follows.</td></tr>
+      <tr><td><code>--safe-top</code>, <code>--safe-bottom</code></td><td>index.html 24–25</td><td>iPad safe-area insets.</td><td>Normally leave alone.</td></tr>
+    </table>
+  </div>
+
+  <p class="muted">Not yet verified on an iPad or with a real microphone. The Supabase tables are not yet created in the Family project.</p>
+</body>
+</html>
