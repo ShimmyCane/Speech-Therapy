@@ -465,9 +465,9 @@ function applySettings() {
 
 /* ---------- Sign-in (uploads need a family member's account) ---------- */
 
-async function refreshAuth() {
+// Takes the session as given. Never call sb.auth from inside an auth-change callback (it deadlocks).
+function applyAuth(session) {
   const status = document.getElementById('auth-status');
-  const session = sb ? (await sb.auth.getSession()).data.session : null;
   signedIn = !!session;
   status.textContent = session
     ? `Signed in as ${session.user.email}. Uploads are on.`
@@ -482,6 +482,11 @@ async function refreshAuth() {
   }
   document.getElementById('sign-out').hidden = !signedIn;
   renderLesson();
+}
+
+async function refreshAuth() {
+  const session = sb ? (await sb.auth.getSession()).data.session : null;
+  applyAuth(session);
 }
 
 async function signIn(event) {
@@ -534,7 +539,7 @@ function wireControls() {
   document.getElementById('gear').addEventListener('click', () => openDrawer(document.getElementById('drawer').classList.contains('hidden')));
   document.getElementById('close-drawer').addEventListener('click', () => openDrawer(false));
   document.getElementById('sign-out').addEventListener('click', signOut);
-  if (sb) sb.auth.onAuthStateChange(() => refreshAuth());
+  if (sb) sb.auth.onAuthStateChange((_event, session) => applyAuth(session));
 }
 
 /* ---------- Boot ---------- */
@@ -547,10 +552,10 @@ async function boot() {
   }
   initSupabase();
   wireControls();
-  await refreshAuth();
   await loadLessons();
   fillPicker();
   renderLesson();
+  refreshAuth().catch((e) => trap('sign-in status', e));
 }
 
 boot();
