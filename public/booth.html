@@ -63,6 +63,18 @@
     .errors.hidden, .hidden { display: none !important; }
     .toggle { display: flex; align-items: center; gap: 10px; font-size: 18px; min-height: 44px; }
     .toggle input { width: 24px; height: 24px; }
+    .gear {
+      position: fixed; right: 16px; bottom: 16px; width: 64px; height: 64px; min-height: 64px;
+      border-radius: 50%; font-size: 30px; padding: 0; z-index: 20;
+      background: var(--grape); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink);
+    }
+    .drawer {
+      position: fixed; left: 0; right: 0; bottom: 0; max-height: 80vh; overflow: auto;
+      background: var(--paper); border-top: 4px solid var(--ink); border-radius: 24px 24px 0 0;
+      padding: 18px 16px; z-index: 30; box-shadow: 0 -4px 0 var(--ink);
+    }
+    .drawer .card { margin-bottom: 12px; }
+    .errors { z-index: 10; }
     .signin { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; }
     .signin input { font: inherit; font-size: 18px; padding: 8px 10px; min-width: 240px; border: 3px solid var(--ink); border-radius: 12px; }
   </style>
@@ -79,19 +91,14 @@
   <div class="card">
     <h2>Sign in to upload</h2>
     <p class="note" id="auth-status">Checking sign-in…</p>
-    <div class="signin" id="signin-row">
-      <input id="email" type="email" autocomplete="email" placeholder="your family email">
-      <button id="send-link">Email me a sign-in link</button>
-    </div>
+    <form class="signin" id="signin-form">
+      <input id="email" type="email" autocomplete="username" placeholder="your family email" required>
+      <input id="password" type="password" autocomplete="current-password" placeholder="password" required>
+      <button type="submit" id="sign-in">Sign in</button>
+    </form>
     <div class="signin">
       <button id="sign-out" hidden>Sign out</button>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>Booth settings</h2>
-    <label class="toggle"><input type="checkbox" id="opt-trim" checked> Trim the last half second of each recording (removes the click or buzz at the end)</label>
-    <label class="toggle"><input type="checkbox" id="opt-errors" checked> Show the error panel at the bottom</label>
   </div>
 
   <div class="card">
@@ -107,6 +114,18 @@
     <div id="word-list"></div>
   </div>
 
+</div>
+
+<!-- Settings (⚙️), same pattern as the lesson app -->
+<button class="gear" id="gear" aria-label="Booth settings">⚙️</button>
+
+<div class="drawer hidden" id="drawer" role="dialog" aria-label="Booth settings">
+  <div class="card">
+    <h2>Booth settings</h2>
+    <label class="toggle"><input type="checkbox" id="opt-trim" checked> Trim the last quarter second of each recording (removes the click or buzz at the end)</label>
+    <label class="toggle"><input type="checkbox" id="opt-errors" checked> Show the error panel at the bottom</label>
+  </div>
+  <div class="row"><button id="close-drawer">Close</button></div>
 </div>
 
 <div class="errors" id="error-panel" aria-live="polite"></div>

@@ -8,7 +8,7 @@ const SUPABASE_URL = 'https://twvqvutrcobedvuhnzxq.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_eqUo8HEdEB1hMQM4CpSVqA_9i6b0qCo';
 const BUCKET = 'speech-therapy';
 const MAX_SECONDS = 10;
-const TRIM_SECONDS = 0.5;       // cut from the end of each recording when trimming is on
+const TRIM_SECONDS = 0.25;      // cut from the end of each recording when trimming is on
 const DONE_KEY = 'speech.booth.v1';
 const SETTINGS_KEY = 'speech.booth.settings.v1';
 let settings = { trim: true, errors: true };
@@ -471,31 +471,35 @@ async function refreshAuth() {
   status.textContent = session
     ? `Signed in as ${session.user.email}. Uploads are on.`
     : 'Not signed in. Uploads are off until you sign in.';
-  document.getElementById('signin-row').classList.toggle('hidden', signedIn);
+  document.getElementById('signin-form').classList.toggle('hidden', signedIn);
   document.getElementById('sign-out').hidden = !signedIn;
   renderLesson();
 }
 
-async function sendSignInLink() {
+async function signIn(event) {
+  event.preventDefault();
   const email = document.getElementById('email').value.trim();
-  if (!email) {
-    trap('sign-in', new Error('Type your family email first.'));
-    return;
-  }
+  const password = document.getElementById('password').value;
   if (!sb) {
     trap('sign-in', new Error('Not connected to the family storage.'), 'Try again when the device is online.');
     return;
   }
+  const button = document.getElementById('sign-in');
+  button.disabled = true;
   try {
-    const { error } = await sb.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: false, emailRedirectTo: window.location.href.split('?')[0] },
-    });
+    const { error } = await sb.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    logLine('ok', `Sign-in link sent to ${email}. Open it on this device.`);
+    document.getElementById('password').value = '';
+    logLine('ok', 'Signed in. Uploads are on.');
   } catch (e) {
-    trap('sign-in', e, 'Only family members who have been added can sign in. Ask for an invite.');
+    trap('sign-in', e, 'Check the email and password. A grown-up can reset the password in Supabase.');
+  } finally {
+    button.disabled = false;
   }
+}
+
+function openDrawer(show) {
+  document.getElementById('drawer').classList.toggle('hidden', !show);
 }
 
 async function signOut() {
@@ -518,7 +522,9 @@ function wireControls() {
     saveSettings();
     applySettings();
   });
-  document.getElementById('send-link').addEventListener('click', sendSignInLink);
+  document.getElementById('signin-form').addEventListener('submit', signIn);
+  document.getElementById('gear').addEventListener('click', () => openDrawer(document.getElementById('drawer').classList.contains('hidden')));
+  document.getElementById('close-drawer').addEventListener('click', () => openDrawer(false));
   document.getElementById('sign-out').addEventListener('click', signOut);
   if (sb) sb.auth.onAuthStateChange(() => refreshAuth());
 }
