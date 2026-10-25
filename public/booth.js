@@ -26,6 +26,15 @@ let hideSignIn = null;          // timer that hides the sign-in form after sign-
 
 /* ---------- Error trapping ---------- */
 
+// Stops a network call that never answers from hanging the page. The error panel says which step timed out.
+function withTimeout(promise, label, ms = 10000) {
+  let timer;
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} did not answer after ${ms / 1000} seconds.`)), ms);
+  });
+  return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
+}
+
 function logLine(kind, text) {
   const panel = document.getElementById('error-panel');
   const div = document.createElement('div');
@@ -81,7 +90,8 @@ function writeDone(done) {
 
 async function loadLessons() {
   try {
-    const res = await fetch('lessons.json', { cache: 'no-cache' });
+    logLine('info', 'Loading lessons…');
+    const res = await fetch('lessons.json', { cache: 'no-cache', signal: AbortSignal.timeout(10000) });
     if (!res.ok) throw new Error(`lessons.json returned HTTP ${res.status}`);
     const json = await res.json();
     lessons = json.lessons || [];
@@ -485,8 +495,15 @@ function applyAuth(session) {
 }
 
 async function refreshAuth() {
-  const session = sb ? (await sb.auth.getSession()).data.session : null;
-  applyAuth(session);
+  if (!sb) {
+    document.getElementById('auth-status').textContent = 'Not connected. Uploads are off.';
+    return;
+  }
+  logLine('info', 'Checking sign-in…');
+  const { data, error } = await withTimeout(sb.auth.getSession(), 'Checking sign-in');
+  if (error) throw error;
+  logLine('ok', 'Sign-in check done.');
+  applyAuth(data.session);
 }
 
 async function signIn(event) {
@@ -497,10 +514,15 @@ async function signIn(event) {
     trap('sign-in', new Error('Not connected to the family storage.'), 'Try again when the device is online.');
     return;
   }
+  if (!email || !password) {
+    trap('sign-in', new Error('Type your email and password first.'));
+    return;
+  }
   const button = document.getElementById('sign-in');
   button.disabled = true;
+  logLine('info', `Signing in as ${email}…`);
   try {
-    const { error } = await sb.auth.signInWithPassword({ email, password });
+    const { error } = await withTimeout(sb.auth.signInWithPassword({ email, password }), 'Sign-in');
     if (error) throw error;
     document.getElementById('password').value = '';
     logLine('ok', 'Signed in. Uploads are on.');
@@ -517,7 +539,7 @@ function openDrawer(show) {
 
 async function signOut() {
   try {
-    const { error } = await sb.auth.signOut();
+    const { error } = await withTimeout(sb.auth.signOut(), 'Sign-out');
     if (error) throw error;
     logLine('ok', 'Signed out.');
   } catch (e) {
@@ -555,7 +577,10 @@ async function boot() {
   await loadLessons();
   fillPicker();
   renderLesson();
-  refreshAuth().catch((e) => trap('sign-in status', e));
+  refreshAuth().catch((e) => {
+    document.getElementById('auth-status').textContent = 'Could not check sign-in. Uploads are off.';
+    trap('sign-in check', e, 'Check the connection, then reload the page.');
+  });
 }
 
 boot();
