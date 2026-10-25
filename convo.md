@@ -39,3 +39,6 @@ Questions and answers from review. Each answer is a decision to build against.
 - [ ] Test uploads from the Voice Booth and check the Supabase storage rules allow them.
 - [ ] Test creating a new draft lesson and check the table rules allow it.
 - [ ] Switch GitHub Pages from the feature branch to `main`.
+- [ ] Test a full lesson end to end: draft lessons (⚙️ "Try draft lessons"), record, play back, then publish.
+- [ ] Decide how the lesson audio is produced. The device voice does not match the sound Felix needs. Options to compare: recorded grown-up clips for every word, a better text-to-speech voice, or both.
+- [ ] Check the mouth-position guide with a speech therapist. TH has no clear placement in the sources used. The guide is at https://claude.ai/artifact/2FUYrFzWSQQVXftmqmebW2 and is not yet in the repo.
