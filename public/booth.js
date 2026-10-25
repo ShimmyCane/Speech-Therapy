@@ -8,10 +8,9 @@ const SUPABASE_URL = 'https://twvqvutrcobedvuhnzxq.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_eqUo8HEdEB1hMQM4CpSVqA_9i6b0qCo';
 const BUCKET = 'speech-therapy';
 const MAX_SECONDS = 10;
-const TRIM_SECONDS = 0.25;      // cut from the end of each recording when trimming is on
 const DONE_KEY = 'speech.booth.v1';
 const SETTINGS_KEY = 'speech.booth.settings.v1';
-let settings = { trim: true, errors: true };
+let settings = { trimSeconds: 0.5, errors: true };   // trimSeconds 0 means off
 const clips = new Map();        // key -> { blob, url, mime }
 const flags = new Map();        // key -> message shown on that word's row
 let lessons = [];
@@ -439,9 +438,13 @@ async function trimEnd(blob, seconds) {
 }
 
 async function maybeTrim(blob) {
-  if (!settings.trim) return blob;
+  const seconds = Number(settings.trimSeconds) || 0;
+  if (!seconds) return blob;
   try {
-    return await trimEnd(blob, TRIM_SECONDS);
+    const out = await trimEnd(blob, seconds);
+    if (out === blob) logLine('info', `Recording is shorter than ${seconds} s, so nothing was trimmed.`);
+    else logLine('ok', `Trimmed ${seconds} s from the end.`);
+    return out;
   } catch (e) {
     trap('trim', e, 'Kept the recording untrimmed.');
     return blob;
@@ -468,7 +471,7 @@ function saveSettings() {
 }
 
 function applySettings() {
-  document.getElementById('opt-trim').checked = settings.trim;
+  document.getElementById('opt-trim').value = String(Number(settings.trimSeconds) || 0);
   document.getElementById('opt-errors').checked = settings.errors;
   document.getElementById('error-panel').classList.toggle('hidden', !settings.errors);
 }
@@ -549,7 +552,7 @@ async function signOut() {
 
 function wireControls() {
   document.getElementById('opt-trim').addEventListener('change', (e) => {
-    settings.trim = e.target.checked;
+    settings.trimSeconds = Number(e.target.value);
     saveSettings();
   });
   document.getElementById('opt-errors').addEventListener('change', (e) => {

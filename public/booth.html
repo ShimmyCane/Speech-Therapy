@@ -63,6 +63,7 @@
     .errors.hidden, .hidden { display: none !important; }
     .toggle { display: flex; align-items: center; gap: 10px; font-size: 18px; min-height: 44px; }
     .toggle input { width: 24px; height: 24px; }
+    .toggle select { font-size: 18px; min-height: 44px; }
     .gear {
       position: fixed; right: 16px; bottom: 16px; width: 64px; height: 64px; min-height: 64px;
       border-radius: 50%; font-size: 30px; padding: 0; z-index: 20;
@@ -124,7 +125,14 @@
 <div class="drawer hidden" id="drawer" role="dialog" aria-label="Booth settings">
   <div class="card">
     <h2>Booth settings</h2>
-    <label class="toggle"><input type="checkbox" id="opt-trim" checked> Trim the last quarter second of each recording (removes the click or buzz at the end)</label>
+    <label class="toggle">Trim the end of each recording:
+      <select id="opt-trim">
+        <option value="0">Off</option>
+        <option value="0.25">0.25 s</option>
+        <option value="0.5">0.5 s</option>
+        <option value="1">1 s</option>
+      </select>
+    </label>
     <label class="toggle"><input type="checkbox" id="opt-errors" checked> Show the error panel at the bottom</label>
   </div>
   <div class="row"><button id="close-drawer">Close</button></div>
