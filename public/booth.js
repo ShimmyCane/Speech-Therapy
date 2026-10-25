@@ -321,6 +321,7 @@ async function togglePublish() {
 
 function renderLesson() {
   renderDetails();
+  MouthGuide.render(document.getElementById('booth-mouth-guide'), current);
   renderWords();
   updateProgress();
 }

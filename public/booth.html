@@ -7,6 +7,7 @@
   <title>Voice Booth</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Patrick+Hand&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
+  <link href="mouth-guide.css" rel="stylesheet">
   <style>
     :root {
       --ink: #2b2d42; --paper: #fffdf5; --sun: #ffd23f; --pink: #ff6b9d;
@@ -150,6 +151,8 @@
       </div>
       <p class="note" id="edit-note"></p>
     </div>
+    <p class="note">Mouth pictures Felix sees for this lesson. Copy the mouth position as you record.</p>
+    <div class="mouth-guide" id="booth-mouth-guide"></div>
     <div id="word-list"></div>
     <div class="add-word">
       <input id="new-word" type="text" placeholder="add a word">
@@ -181,6 +184,7 @@
 <div class="errors" id="error-panel" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="booth.js?v=3"></script>
+<script src="mouth-guide.js"></script>
+<script src="booth.js?v=4"></script>
 </body>
 </html>
