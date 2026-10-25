@@ -8,7 +8,10 @@ const SUPABASE_URL = 'https://twvqvutrcobedvuhnzxq.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_eqUo8HEdEB1hMQM4CpSVqA_9i6b0qCo';
 const BUCKET = 'speech-therapy';
 const MAX_SECONDS = 10;
+const TRIM_SECONDS = 0.5;       // cut from the end of each recording when trimming is on
 const DONE_KEY = 'speech.booth.v1';
+const SETTINGS_KEY = 'speech.booth.settings.v1';
+let settings = { trim: true, errors: true };
 const clips = new Map();        // key -> { blob, url, mime }
 const flags = new Map();        // key -> message shown on that word's row
 let lessons = [];
@@ -18,6 +21,7 @@ let recordingKey = null;
 let chunks = [];
 let startedAt = 0;
 let sb = null;
+let signedIn = false;           // true once a family member has signed in (uploads need it)
 
 /* ---------- Error trapping ---------- */
 
@@ -179,7 +183,7 @@ function renderLesson() {
     const upload = document.createElement('button');
     upload.className = 'upload';
     upload.textContent = '☁ Upload';
-    upload.disabled = !clips.has(key);
+    upload.disabled = !signedIn || !clips.has(key);
     upload.addEventListener('click', () => uploadClip(key, word, i));
     actions.appendChild(upload);
 
@@ -312,7 +316,8 @@ async function toggleRecord(key, word, index) {
         renderLesson();
         return;
       }
-      await keepClip(key, word, blob, type, elapsed);
+      const kept = await maybeTrim(blob);
+      await keepClip(key, word, kept, kept.type, elapsed);
     });
     startedAt = Date.now();
     recorder.start();
@@ -374,13 +379,161 @@ async function uploadClip(key, word, index) {
   }
 }
 
+/* ---------- Trimming the end of a recording ---------- */
+
+function encodeWav(buf, frames) {
+  const channels = buf.numberOfChannels;
+  const rate = buf.sampleRate;
+  const dataBytes = frames * channels * 2;
+  const out = new DataView(new ArrayBuffer(44 + dataBytes));
+  const text = (offset, s) => { for (let i = 0; i < s.length; i++) out.setUint8(offset + i, s.charCodeAt(i)); };
+  text(0, 'RIFF');
+  out.setUint32(4, 36 + dataBytes, true);
+  text(8, 'WAVE');
+  text(12, 'fmt ');
+  out.setUint32(16, 16, true);
+  out.setUint16(20, 1, true);                    // PCM
+  out.setUint16(22, channels, true);
+  out.setUint32(24, rate, true);
+  out.setUint32(28, rate * channels * 2, true);
+  out.setUint16(32, channels * 2, true);
+  out.setUint16(34, 16, true);                   // 16-bit
+  text(36, 'data');
+  out.setUint32(40, dataBytes, true);
+
+  const channelData = [];
+  for (let c = 0; c < channels; c++) channelData.push(buf.getChannelData(c));
+  let offset = 44;
+  for (let i = 0; i < frames; i++) {
+    for (let c = 0; c < channels; c++) {
+      const s = Math.max(-1, Math.min(1, channelData[c][i]));
+      out.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return new Blob([out], { type: 'audio/wav' });
+}
+
+async function trimEnd(blob, seconds) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC();
+  try {
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const frames = buf.length - Math.round(seconds * buf.sampleRate);
+    if (frames <= 0) return blob;   // too short to trim: keep it as recorded
+    return encodeWav(buf, frames);
+  } finally {
+    ctx.close();
+  }
+}
+
+async function maybeTrim(blob) {
+  if (!settings.trim) return blob;
+  try {
+    return await trimEnd(blob, TRIM_SECONDS);
+  } catch (e) {
+    trap('trim', e, 'Kept the recording untrimmed.');
+    return blob;
+  }
+}
+
+/* ---------- Booth settings ---------- */
+
+function readSettings() {
+  try {
+    return { ...settings, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
+  } catch (e) {
+    trap('booth settings', e, 'Using the default settings for this session.');
+    return { ...settings };
+  }
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) {
+    trap('saving booth settings', e, 'Could not save on this device (storage blocked or full).');
+  }
+}
+
+function applySettings() {
+  document.getElementById('opt-trim').checked = settings.trim;
+  document.getElementById('opt-errors').checked = settings.errors;
+  document.getElementById('error-panel').classList.toggle('hidden', !settings.errors);
+}
+
+/* ---------- Sign-in (uploads need a family member's account) ---------- */
+
+async function refreshAuth() {
+  const status = document.getElementById('auth-status');
+  const session = sb ? (await sb.auth.getSession()).data.session : null;
+  signedIn = !!session;
+  status.textContent = session
+    ? `Signed in as ${session.user.email}. Uploads are on.`
+    : 'Not signed in. Uploads are off until you sign in.';
+  document.getElementById('signin-row').classList.toggle('hidden', signedIn);
+  document.getElementById('sign-out').hidden = !signedIn;
+  renderLesson();
+}
+
+async function sendSignInLink() {
+  const email = document.getElementById('email').value.trim();
+  if (!email) {
+    trap('sign-in', new Error('Type your family email first.'));
+    return;
+  }
+  if (!sb) {
+    trap('sign-in', new Error('Not connected to the family storage.'), 'Try again when the device is online.');
+    return;
+  }
+  try {
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false, emailRedirectTo: window.location.href.split('?')[0] },
+    });
+    if (error) throw error;
+    logLine('ok', `Sign-in link sent to ${email}. Open it on this device.`);
+  } catch (e) {
+    trap('sign-in', e, 'Only family members who have been added can sign in. Ask for an invite.');
+  }
+}
+
+async function signOut() {
+  try {
+    const { error } = await sb.auth.signOut();
+    if (error) throw error;
+    logLine('ok', 'Signed out.');
+  } catch (e) {
+    trap('sign-out', e);
+  }
+}
+
+function wireControls() {
+  document.getElementById('opt-trim').addEventListener('change', (e) => {
+    settings.trim = e.target.checked;
+    saveSettings();
+  });
+  document.getElementById('opt-errors').addEventListener('change', (e) => {
+    settings.errors = e.target.checked;
+    saveSettings();
+    applySettings();
+  });
+  document.getElementById('send-link').addEventListener('click', sendSignInLink);
+  document.getElementById('sign-out').addEventListener('click', signOut);
+  if (sb) sb.auth.onAuthStateChange(() => refreshAuth());
+}
+
 /* ---------- Boot ---------- */
 
 async function boot() {
+  settings = readSettings();
+  applySettings();
   if (!window.isSecureContext) {
     logLine('info', 'Not a secure (https) address. Recording will not work here.');
   }
   initSupabase();
+  wireControls();
+  await refreshAuth();
   await loadLessons();
   fillPicker();
   renderLesson();
