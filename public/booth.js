@@ -359,8 +359,8 @@ function renderWords() {
     } else {
       status.textContent = 'not recorded yet';
     }
-    main.appendChild(status);
     row.appendChild(main);
+    row.appendChild(status);
 
     const actions = document.createElement('div');
     actions.className = 'actions';
@@ -371,20 +371,6 @@ function renderWords() {
     rec.classList.toggle('on', recordingKey === key);
     rec.addEventListener('click', () => toggleRecord(key, word));
     actions.appendChild(rec);
-
-    const add = document.createElement('button');
-    add.className = 'add';
-    add.textContent = '📂 Add audio';
-    const picker = document.createElement('input');
-    picker.type = 'file';
-    picker.accept = 'audio/*';
-    picker.addEventListener('change', () => {
-      if (picker.files && picker.files[0]) onFilePicked(key, word, picker.files[0]);
-      picker.value = '';
-    });
-    add.addEventListener('click', () => picker.click());
-    actions.appendChild(add);
-    actions.appendChild(picker);
 
     const play = document.createElement('button');
     play.className = 'play';
@@ -474,16 +460,6 @@ function extFor(mime) {
   if (mime.includes('wav')) return 'wav';
   if (mime.includes('ogg')) return 'ogg';
   return 'webm';
-}
-
-async function onFilePicked(key, word, file) {
-  if (!file.type.startsWith('audio/')) {
-    flags.set(key, `Not an audio file (${file.type || 'unknown type'}).`);
-    trap(`"${word}"`, new Error('Only audio files are accepted.'), 'Choose an MP3, M4A, WAV or other sound file.');
-    renderWords();
-    return;
-  }
-  await keepClip(key, word, file, file.type, undefined);
 }
 
 /* ---------- Recording ---------- */

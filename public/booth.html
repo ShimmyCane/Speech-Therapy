@@ -45,7 +45,7 @@
     .flag { color: var(--error); font-weight: 800; font-size: 16px; display: block; }
     input[type=file] { display: none; }
     .word-row {
-      display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+      display: grid; grid-template-columns: 1fr; gap: 8px; align-items: stretch;
       border-bottom: 2px dashed #d9d4ea; padding: 10px 0;
     }
     .word-row .text { font-size: 26px; }
@@ -64,6 +64,7 @@
     .toggle { display: flex; align-items: center; gap: 10px; font-size: 18px; min-height: 44px; }
     .toggle input { width: 24px; height: 24px; }
     .toggle select { font-size: 18px; min-height: 44px; }
+    #lesson-pick { max-width: 100%; min-width: 0; flex: 1 1 200px; }
     .lesson-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
     .pill { font-weight: 800; font-size: 15px; padding: 4px 12px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; }
     .pill.live { background: var(--mint); }
@@ -93,7 +94,7 @@
     .drawer .card { margin-bottom: 12px; }
     .errors { z-index: 10; }
     .signin { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; }
-    .signin input { font: inherit; font-size: 18px; padding: 8px 10px; min-width: 240px; border: 3px solid var(--ink); border-radius: 12px; }
+    .signin input { font: inherit; font-size: 18px; padding: 8px 10px; min-width: 0; flex: 1 1 200px; border: 3px solid var(--ink); border-radius: 12px; }
     .signin { transition: opacity 0.6s ease; }
     .signin.fading { opacity: 0; }
   </style>
