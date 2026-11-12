@@ -42,3 +42,11 @@ Questions and answers from review. Each answer is a decision to build against.
 - [ ] Test a full lesson end to end: draft lessons (⚙️ "Try draft lessons"), record, play back, then publish.
 - [ ] Decide how the lesson audio is produced. The device voice does not match the sound Felix needs. Options to compare: recorded grown-up clips for every word, a better text-to-speech voice, or both.
 - [ ] Check the mouth-position guide with a speech therapist. TH has no clear placement in the sources used. The guide is at https://claude.ai/artifact/2FUYrFzWSQQVXftmqmebW2 and is not yet in the repo.
+
+## V2 redesign (2026-11)
+
+- V1 (lessons + Voice Booth) archived to `v1/`; runs unchanged, linked from Settings.
+- New home: Survey, Videos, Diagrams, 3D Mouth, Words. Colour = how the mouth moves, same on every tab.
+- Per-person profiles with notes, lock-in and version log. Data in `supabase/schema_v2.sql` (not yet applied).
+- Research primer: `research_approach/README.md`.
+- To do: apply `schema_v2.sql`; check the video links and the reference links open; review mouth models with an SLP; photo/book word import; richer surveys per sound.
