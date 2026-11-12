@@ -245,6 +245,17 @@ function renderDiagrams(root) {
 
 /* ---------- 4. 3D MOUTH ---------- */
 
+/* Pick a word that contains a sound, so the 3D mouth always animates a real word.
+   Prefers short words where the sound appears once, early on. Repeated taps cycle through the choices. */
+function wordForSound(pid, current) {
+  const all = [...new Set([...Object.keys(WORDS), ...store.customWords()])];
+  const cands = all.map((w) => { const ps = soundsOf(w); return { w, i: ps.indexOf(pid), n: ps.length, c: ps.filter((x) => x === pid).length }; })
+    .filter((x) => x.i >= 0).sort((a, b) => (a.c - b.c) || (a.n - b.n) || (a.i - b.i) || a.w.localeCompare(b.w)).map((x) => x.w);
+  if (!cands.length) return null;
+  const at = cands.indexOf(current);
+  return cands[(at + 1) % cands.length];
+}
+
 async function renderMouth3D(root) {
   const wordOptions = [...new Set([...SURVEY.items.map((i) => i.word), ...Object.keys(WORDS), ...store.customWords()])];
   root.innerHTML = `
@@ -265,13 +276,13 @@ async function renderMouth3D(root) {
         <span class="lbl">Speed</span>
         ${[0.5, 0.75, 1].map((s) => `<button class="btn small spd${(store.ui().slow || 1) === s ? ' on' : ''}" data-spd="${s}">${s}×</button>`).join('')}
         <span class="lbl">View</span>
-        ${[['side', 'Side'], ['angle', '3/4'], ['front', 'Front']].map(([v, n]) => `<button class="btn small" data-view="${v}">${n}</button>`).join('')}
+        ${[['side', 'Side'], ['angle', '3/4'], ['front', 'Front'], ['other', 'Other side']].map(([v, n]) => `<button class="btn small" data-view="${v}">${n}</button>`).join('')}
         <label class="toggle"><input type="checkbox" id="cut" ${store.ui().cutaway ? 'checked' : ''}> Cutaway</label>
       </div>
     </div>
-    <div class="card"><h2>Single sounds</h2><div class="legend">${legendHTML()}</div>
+    <div class="card"><h2>Jump to a sound</h2><div class="legend">${legendHTML()}</div>
       <div class="chips sounds">${SOUND_ORDER.map((p) => `<button class="schip big" data-3d="${p}" style="--c:${groupOf(p).color};--t:${groupOf(p).tint}" title="${esc(SOUNDS[p].label)}"><b>${esc(SOUNDS[p].spell)}</b></button>`).join('')}</div>
-      <div class="mouth" id="snd-text">Tap a sound to hold the mouth in that shape.</div></div>
+      <div class="mouth" id="snd-text">Tap a sound and we will find a word with it and show the mouth saying the word.</div></div>
     <div class="card"><h2>Already out there</h2>
       <p class="note">Ready-made tools with real recordings and scans. Worth comparing with our model. (Links could not be opened from the build environment, so please check they still work.)</p>
       <ul class="refs">${REFERENCES.map((r) => `<li><a href="${r.url}" target="_blank" rel="noopener">${esc(r.title)} ↗</a><br><span class="note">${esc(r.note)}</span></li>`).join('')}</ul></div>`;
@@ -285,12 +296,21 @@ async function renderMouth3D(root) {
       onPhoneme: (pid) => { $('#word-now') && ($('#word-now').innerHTML = wordHTML(st.threeWord, pid)); if (pid) $('#snd-text').innerHTML = `<b style="color:${colorOf(pid)}">${esc(SOUNDS[pid].label)}.</b> ${esc(SOUNDS[pid].how)}`; },
     });
     st.three.setCutaway(store.ui().cutaway); st.three.setSpeed(store.ui().slow || 1);
-    if (st.threeSound) { st.three.showSound(st.threeSound); $('#snd-text').innerHTML = `<b style="color:${colorOf(st.threeSound)}">${esc(SOUNDS[st.threeSound].label)}.</b> ${esc(SOUNDS[st.threeSound].how)}`; st.threeSound = null; }
   } catch (e) {
     stage.innerHTML = `<div class="stage-msg">3D could not start here (${esc(e.message || e)}). The Diagrams tab shows the same shapes in 2D.</div>`;
     return;
   }
-  const play = () => { st.threeWord = $('#w-pick').value; $('#word-now').innerHTML = wordHTML(st.threeWord); st.three.playWord(st.threeWord, { loop: st.loop }); };
+  const jumpToSound = (pid) => {
+    const w = wordForSound(pid, st.focusSound === pid ? st.threeWord : null);
+    if (!w) return;
+    st.threeWord = w; st.focusSound = pid;
+    const sel = $('#w-pick'); if (sel) sel.value = w;
+    root.querySelectorAll('[data-3d]').forEach((x) => x.classList.toggle('on', x.dataset['3d'] === pid));
+    $('#word-now').innerHTML = wordHTML(w, pid);
+    $('#snd-text').innerHTML = `<b style="color:${colorOf(pid)}">${esc(SOUNDS[pid].label)}.</b> ${esc(SOUNDS[pid].how)} <span class="note">Watch it in <b>${esc(w)}</b>. Tap again for another word.</span>`;
+    st.three.playWord(w, { loop: st.loop });
+  };
+  const play = () => { st.focusSound = null; root.querySelectorAll('[data-3d].on').forEach((x) => x.classList.remove('on')); st.threeWord = $('#w-pick').value; $('#word-now').innerHTML = wordHTML(st.threeWord); st.three.playWord(st.threeWord, { loop: st.loop }); };
   $('#w-play').addEventListener('click', play);
   $('#w-pick').addEventListener('change', play);
   $('#w-count').addEventListener('click', () => st.three.countTeeth());
@@ -299,7 +319,8 @@ async function renderMouth3D(root) {
   root.querySelectorAll('[data-spd]').forEach((b) => b.addEventListener('click', () => { store.setUi({ slow: Number(b.dataset.spd) }); st.three.setSpeed(Number(b.dataset.spd)); root.querySelectorAll('.spd').forEach((x) => x.classList.toggle('on', x === b)); }));
   root.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => st.three.view(b.dataset.view)));
   $('#cut').addEventListener('change', (e) => { store.setUi({ cutaway: e.target.checked }); st.three.setCutaway(e.target.checked); });
-  root.querySelectorAll('[data-3d]').forEach((b) => b.addEventListener('click', () => { const p = b.dataset['3d']; st.three.showSound(p); $('#snd-text').innerHTML = `<b style="color:${colorOf(p)}">${esc(SOUNDS[p].label)}.</b> ${esc(SOUNDS[p].how)}`; }));
+  root.querySelectorAll('[data-3d]').forEach((b) => b.addEventListener('click', () => jumpToSound(b.dataset['3d'])));
+  if (st.threeSound) { jumpToSound(st.threeSound); st.threeSound = null; }
   window.__three = st.three;
 }
 
