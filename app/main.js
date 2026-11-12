@@ -265,7 +265,7 @@ async function renderMouth3D(root) {
         <span class="lbl">Speed</span>
         ${[0.5, 0.75, 1].map((s) => `<button class="btn small spd${(store.ui().slow || 1) === s ? ' on' : ''}" data-spd="${s}">${s}×</button>`).join('')}
         <span class="lbl">View</span>
-        ${[['side', 'Side'], ['angle', '3/4'], ['front', 'Front']].map(([v, n]) => `<button class="btn small" data-view="${v}">${n}</button>`).join('')}
+        ${[['side', 'Side'], ['angle', '3/4'], ['front', 'Front'], ['other', 'Other side']].map(([v, n]) => `<button class="btn small" data-view="${v}">${n}</button>`).join('')}
         <label class="toggle"><input type="checkbox" id="cut" ${store.ui().cutaway ? 'checked' : ''}> Cutaway</label>
       </div>
     </div>

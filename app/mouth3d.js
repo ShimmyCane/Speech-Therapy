@@ -192,9 +192,9 @@ export function createMouth3D(container, { onPhoneme, onCount } = {}) {
   scene.add(lips, funnel);
 
   // ----- nose passage (translucent), so "nasal" sounds have somewhere to go -----
-  const nosePts = [W(188, 112), W(215, 70), W(300, 48), W(400, 46), W(470, 62), W(515, 92), W(545, 112)];
+  const nosePts = [W(188, 112), W(215, 82), W(300, 66), W(400, 62), W(462, 74), W(488, 96), W(498, 116)];
   const noseCurve = new THREE.CatmullRomCurve3(nosePts);
-  const nose = new THREE.Mesh(new THREE.TubeGeometry(noseCurve, 40, 0.1, 10, false), mat(0xf6b8c6, { transparent: true, opacity: 0.38, depthWrite: false }));
+  const nose = new THREE.Mesh(new THREE.TubeGeometry(noseCurve, 40, 0.07, 10, false), mat(0xf6b8c6, { transparent: true, opacity: 0.38, depthWrite: false }));
   scene.add(nose);
 
   // ----- air: soft round particles, flowing through the real gaps, fanning out past the lips -----
@@ -289,7 +289,7 @@ export function createMouth3D(container, { onPhoneme, onCount } = {}) {
       const x = xl + (p.round * 8) * (1 - Math.abs(sa)) - 20 * Math.pow(Math.abs(sa), 3);
       // outward normal in the (z, y) plane
       let nz = sa / rx, ny = -ca / ry; const nl = Math.hypot(nz, ny) || 1; nz /= nl; ny /= nl;
-      const r = 6 + 11 * Math.pow(Math.abs(ca), 1.2) * (ca > 0 ? 0.85 : 1);   // fuller at the middle; lower lip a bit fuller
+      const r = 5 + 8 * Math.pow(Math.abs(ca), 1.2) * (ca > 0 ? 0.85 : 1);   // fuller at the middle; lower lip a bit fuller
       for (let k = 0; k < NS; k++) {
         const ph = (k / NS) * Math.PI * 2, cp = Math.cos(ph), sph = Math.sin(ph);
         const v = W(x + r * sph * 0.9, y + ny * r * cp, z + nz * r * cp);
@@ -358,6 +358,7 @@ export function createMouth3D(container, { onPhoneme, onCount } = {}) {
     cur = lerpParams(from, to, smooth(k));
     const { lt, spn } = build(cur);
     updateAir(time, cur, spn, lt);
+    clip.normal.z = camera.position.z >= 0 ? -1 : 1;   // always remove the half nearest the camera
     controls.update();
     renderer.render(scene, camera);
   }
@@ -371,9 +372,15 @@ export function createMouth3D(container, { onPhoneme, onCount } = {}) {
   }
   const ro = new ResizeObserver(resize); ro.observe(container); resize();
 
-  const VIEWS = { side: [0.8, 0.45, 6.4], angle: [4.4, 1.9, 4.2], front: [8, 0.6, 1.2] };
+  const VIEWS = { side: [0.8, 0.45, 6.4], angle: [4.4, 1.9, 4.2], front: [8, 0.6, 1.2], other: [0.8, 0.45, -6.4] };
   function view(name) { const v = VIEWS[name] || VIEWS.side; camera.position.set(...v); controls.update(); }
-  function applyCut() { mats.forEach((m) => { m.clippingPlanes = cutawayOn ? [clip] : []; m.needsUpdate = true; }); }
+  function applyCut() {
+    mats.forEach((m) => { m.clippingPlanes = cutawayOn ? [clip] : []; m.needsUpdate = true; });
+    // without the cut, make the outer skin see-through so the tongue, teeth and air stay visible
+    for (const m of [cavity.material, funnel.material, wall.material, gumMatU, gumMatL]) {
+      m.transparent = !cutawayOn; m.opacity = cutawayOn ? 1 : 0.3; m.depthWrite = cutawayOn; m.needsUpdate = true;
+    }
+  }
   view('side'); applyCut();
   raf = requestAnimationFrame(frame);
 
