@@ -258,7 +258,9 @@ async function renderMouth3D(root) {
         <button class="btn mint" id="w-play">▶ Say it slowly</button>
         <button class="btn small" id="w-loop">🔁 Loop: off</button>
         <button class="btn small" id="w-stop">■ Stop</button>
+        <button class="btn small sun" id="w-count">🦷 Count the teeth</button>
       </div>
+      <p class="note" id="count-note">A child has 20 baby teeth: 10 on top and 10 on the bottom.</p>
       <div class="row wrap" style="margin-top:8px">
         <span class="lbl">Speed</span>
         ${[0.5, 0.75, 1].map((s) => `<button class="btn small spd${(store.ui().slow || 1) === s ? ' on' : ''}" data-spd="${s}">${s}×</button>`).join('')}
@@ -279,6 +281,7 @@ async function renderMouth3D(root) {
     const { createMouth3D } = await import('./mouth3d.js');
     $('#stage-msg')?.remove();
     st.three = createMouth3D(stage, {
+      onCount: (n, where) => { const el = $('#count-note'); if (!el) return; el.innerHTML = where === 'done' ? 'A child has <b>20</b> baby teeth: <b>10</b> on top and <b>10</b> on the bottom.' : `<b style="font-size:26px">${n}</b> (${where})`; },
       onPhoneme: (pid) => { $('#word-now') && ($('#word-now').innerHTML = wordHTML(st.threeWord, pid)); if (pid) $('#snd-text').innerHTML = `<b style="color:${colorOf(pid)}">${esc(SOUNDS[pid].label)}.</b> ${esc(SOUNDS[pid].how)}`; },
     });
     st.three.setCutaway(store.ui().cutaway); st.three.setSpeed(store.ui().slow || 1);
@@ -290,6 +293,7 @@ async function renderMouth3D(root) {
   const play = () => { st.threeWord = $('#w-pick').value; $('#word-now').innerHTML = wordHTML(st.threeWord); st.three.playWord(st.threeWord, { loop: st.loop }); };
   $('#w-play').addEventListener('click', play);
   $('#w-pick').addEventListener('change', play);
+  $('#w-count').addEventListener('click', () => st.three.countTeeth());
   $('#w-stop').addEventListener('click', () => { st.three.stop(); st.three.showSound(null); });
   $('#w-loop').addEventListener('click', (e) => { st.loop = !st.loop; e.target.textContent = `🔁 Loop: ${st.loop ? 'on' : 'off'}`; });
   root.querySelectorAll('[data-spd]').forEach((b) => b.addEventListener('click', () => { store.setUi({ slow: Number(b.dataset.spd) }); st.three.setSpeed(Number(b.dataset.spd)); root.querySelectorAll('.spd').forEach((x) => x.classList.toggle('on', x === b)); }));
