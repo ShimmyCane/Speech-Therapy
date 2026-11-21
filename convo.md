@@ -57,3 +57,13 @@ Questions and answers from review. Each answer is a decision to build against.
 - Air comes up from the lungs for every sound: out of the mouth for vowels and hissy sounds, out of the nose for m, n, ng, and held then popped for p, b, t, d, k, g. The vocal folds close and buzz for voiced sounds and open for voiceless ones; the label says "buzzing" or "quiet".
 - Headless checks: `node tests/mouth3d.headless.js [folder-for-screenshots]` (needs Playwright + Chromium). 28 checks, plus a 360° spin of both views, cutaway and see-through.
 - To do: check the model with a speech therapist; try it on the iPad (about 150 draw calls, 60k triangles).
+
+## V3: Chinese mode, 4x 3D detail (2026-11)
+
+- V2 (five tabs + lungs-to-nose 3D) archived to `v2/`, runnable from Settings > Earlier versions.
+- **Language switch** (Settings): English or 中文 Mandarin. Every tab switches: survey (31 items: all initials, key finals, four tones), videos (19 Mandarin-teacher videos in 5 topics), diagrams, 3D mouth and word cards (7 decks, 101 words). Answers are kept per language.
+- Mandarin specifics in the model: b/d/g are voiceless with a tiny puff, p/t/k/c/ch/q have a BIG puff; flat tongue z c s vs curled zh ch sh r vs tongue-front-up j q x (new lime colour); finals play as their mouth shapes in a row; -n finals are blue (tongue tip), -ng finals green (back of tongue); the buzzy -i after z c s / zh ch sh r; tones drawn as pitch lines and the vocal folds stretch with pitch; 3+3 tone change (你好 = ní hǎo) marked.
+- 🔊 "Hear it" uses the device's Chinese voice (quality depends on the device).
+- 3D: 4x mesh (Settings > High detail, on by default; turn off on a slow device), environment lighting, wet-tissue and enamel materials, new nose shape, lung lobes, rebuilt tongue (no folds), mouth floor that drops into the throat.
+- Tests: `node tests/mouth3d.headless.js [folder]` now also checks Mandarin and the 4x detail.
+- To do: check the Mandarin mouth shapes and the video picks with a Mandarin teacher; try High detail on the iPad.

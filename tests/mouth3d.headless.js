@@ -39,9 +39,18 @@ const check = (ok, msg) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${msg}`); if 
   check(started, '3D model starts');
   if (!started) { console.log(await page.$eval('#stage', (e) => e.textContent)); process.exit(1); }
   check(await page.evaluate(() => window.__three.toothCount) === 20, '20 baby teeth (10 top, 10 bottom)');
+  // high detail is about 4x the mesh of standard detail (flip the Settings switch and compare)
+  const meshInfo = () => page.evaluate(() => ({ D: window.__three._test.detail, v: window.__three._test.vertices(), t: window.__three._test.renderer.info.render.triangles }));
+  const hi = await meshInfo();
+  await page.click('#gear'); await page.waitForTimeout(200); await page.click('#s-detail'); await page.click('#close-drawer'); await page.waitForTimeout(3500);
+  const lo = await meshInfo();
+  await page.click('#gear'); await page.waitForTimeout(200); await page.click('#s-detail'); await page.click('#close-drawer'); await page.waitForTimeout(3500);
+  check(hi.D === 2 && lo.D === 1 && hi.t / lo.t > 3.5, `high detail draws ${(hi.t / lo.t).toFixed(1)}x the triangles of standard (${lo.t} -> ${hi.t})`);
 
   const state = () => page.evaluate(() => window.__three._test.state());
-  const show = async (s, wait = 900) => { await page.evaluate((s) => window.__three.showSound(s), s); await page.waitForTimeout(wait); return state(); };
+  // software rendering in headless Chromium can be slow, so wait for a state instead of a fixed time
+  const until = async (ok, ms = 6000) => { const t0 = Date.now(); let st = await state(); while (!ok(st) && Date.now() - t0 < ms) { await page.waitForTimeout(80); st = await state(); } return st; };
+  const show = async (s, wait = 900) => { await page.evaluate((s) => window.__three.showSound(s), s); await page.waitForTimeout(wait); return until((st) => st.phase > 0.05 || !s); };
 
   // air route and voicing for each kind of sound
   const expect = {
@@ -51,7 +60,8 @@ const check = (ok, msg) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${msg}`); if 
   };
   const gaps = {};
   for (const [s, e] of Object.entries(expect)) {
-    const st = await show(s);
+    await show(s);
+    const st = await until((x) => x.mode === e.mode && (!e.voice || x.voice === e.voice), 4000);
     gaps[s] = st.foldGap;
     check(st.mode === e.mode, `${s}: air goes ${e.mode === 'stop' ? 'nowhere, then pops (stop)' : 'out through the ' + e.mode} (got ${st.mode})`);
     if (e.voice) check(st.voice === e.voice, `${s}: voice box ${e.voice === 'on' ? 'buzzing' : 'quiet'} (got ${st.voice})`);
@@ -70,15 +80,63 @@ const check = (ok, msg) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${msg}`); if 
   check(phases.some((p) => p < 0.6) && phases.some((p) => p > 0.62), 'P builds up air, then releases it');
 
   // at rest the model breathes through the nose and the lungs move
-  const r1 = await show(null, 300); await page.waitForTimeout(1600); const r2 = await state();
+  await page.evaluate(() => window.__three.showSound(null)); const r1 = await until((x) => x.mode === 'breath'); await page.waitForTimeout(2500); const r2 = await state();
   check(r1.mode === 'breath', 'at rest: breathing');
   check(Math.abs(r2.lungFill - r1.lungFill) > 0.02, `lungs move with breathing (${r1.lungFill.toFixed(2)} -> ${r2.lungFill.toFixed(2)})`);
 
   // a word streams its sounds in order
-  await page.selectOption('#w-pick', 'snake');
-  const seen = [];
-  for (let i = 0; i < 34; i++) { const st = await state(); if (st.curPid && seen.at(-1) !== st.curPid) seen.push(st.curPid); await page.waitForTimeout(110); }
+  const watchWord = async (w, ms = 9000) => {
+    await page.evaluate(() => window.__three.stop());
+    await page.selectOption('#w-pick', w);
+    const seen = []; const t0 = Date.now(); let started = false;
+    while (Date.now() - t0 < ms) { const st = await state(); if (st.curPid) { started = true; if (seen.at(-1) !== st.curPid) seen.push(st.curPid); } else if (started) break; await page.waitForTimeout(60); }
+    return seen;
+  };
+  const seen = await watchWord('snake');
   check(seen.join(' ') === 'S N EY K', `"snake" plays S N EY K (got ${seen.join(' ')})`);
+
+  // Mandarin mode: switch in Settings, then check the Mandarin-specific behaviour
+  await page.click('#gear'); await page.waitForTimeout(300); await page.click('[data-lang="zh"]'); await page.waitForTimeout(300); await page.click('#close-drawer');
+  await page.click('[data-tab="mouth3d"]'); await page.waitForTimeout(3500);
+  check(await page.evaluate(() => !!window.__three), 'Mandarin: 3D model starts');
+  check(await page.$eval('#lang-pill', (e) => !e.classList.contains('hidden')), 'Mandarin: 中文 shown in the header');
+  const zhExpect = {
+    zh_b: { mode: 'stop', asp: false }, zh_p: { mode: 'stop', asp: true }, zh_d: { mode: 'stop', asp: false }, zh_t: { mode: 'stop', asp: true },
+    zh_g: { mode: 'stop', asp: false }, zh_k: { mode: 'stop', asp: true }, zh_q: { mode: 'stop', asp: true }, zh_j: { mode: 'stop', asp: false },
+    zh_s: { mode: 'mouth', voice: 'off' }, zh_x: { mode: 'mouth', voice: 'off' }, zh_r: { mode: 'mouth', voice: 'on' }, zh_m: { mode: 'nose', voice: 'on' },
+  };
+  for (const [s, e] of Object.entries(zhExpect)) {
+    await page.evaluate((s) => window.__three.showSound(s), s); await page.waitForTimeout(500);
+    const st = await until((x) => x.mode === e.mode && (e.mode !== 'stop' || x.phase > 0.7) && (!e.voice || x.voice === e.voice), 5000);
+    check(st.mode === e.mode, `Mandarin ${s.slice(3)}: ${e.mode === 'stop' ? 'closes then releases' : 'air out through the ' + e.mode} (got ${st.mode})`);
+    if ('asp' in e) check(st.asp === e.asp, `Mandarin ${s.slice(3)}: ${e.asp ? 'BIG puff (aspirated)' : 'tiny puff (unaspirated)'} (got ${st.asp ? 'big' : 'tiny'})`);
+    if (e.voice) check(st.voice === e.voice, `Mandarin ${s.slice(3)}: voice box ${e.voice === 'on' ? 'buzzing' : 'quiet'} (got ${st.voice})`);
+  }
+  // b is voiceless in Mandarin (unlike English b)
+  await page.evaluate(() => window.__three.showSound('zh_b')); await page.waitForTimeout(500);
+  check((await until((x) => x.voice === 'off' && x.phase > 0.3, 4000)).voice === 'off', 'Mandarin b: voice box quiet (voiceless, unlike English b)');
+  // tones: the voice pitch follows the contour (tone 4 falls from high to low)
+  await page.evaluate(() => window.__three.showSound('zh_t4'));
+  const pitches = [];
+  for (let k = 0; k < 12; k++) { await page.waitForTimeout(100); pitches.push((await state()).pitch); }
+  check(Math.max(...pitches) > 4.2 && Math.min(...pitches) < 1.8, `tone 4 falls from high to low (pitch ${Math.max(...pitches).toFixed(1)} -> ${Math.min(...pitches).toFixed(1)})`);
+  // a word: 你好 is said ní hǎo (3rd tone before 3rd tone becomes 2nd), and finals play as several mouth shapes
+  const zseen = await watchWord('你好');
+  check(zseen.join(' ') === 'zh_n zh_i zh_h zh_ao', `你好 plays n, i, h, ao (got ${zseen.join(' ')})`);
+  const pitchSvgs = await page.$$eval('#word-now svg.tone', (els) => els.length);
+  check(pitchSvgs === 2, `你好 shows a pitch line under each syllable (${pitchSvgs})`);
+  check(await page.$eval('#word-now', (e) => !!e.querySelector('.sandhi')), '你好 marks the tone change (written 3, said 2)');
+  const zlab = await page.$eval('.lbl3d-layer', (e) => e.textContent);
+  check(/舌头/.test(zlab) && /Tongue/.test(zlab), 'Mandarin: labels are bilingual (Tongue · 舌头)');
+  // every Mandarin tab renders
+  for (const t of ['survey', 'videos', 'diagrams', 'words']) {
+    await page.click(`[data-tab="${t}"]`); await page.waitForTimeout(500);
+    const txt = await page.$eval('#screen', (e) => e.textContent);
+    check(t === 'videos' ? /tones/i.test(txt) : /[\u4e00-\u9fff]/.test(txt), `Mandarin ${t} tab shows Chinese content`);
+  }
+  // back to English for the remaining checks
+  await page.click('#gear'); await page.waitForTimeout(300); await page.click('[data-lang="en"]'); await page.waitForTimeout(300); await page.click('#close-drawer');
+  await page.click('[data-tab="mouth3d"]'); await page.waitForTimeout(3500);
 
   // views and labels
   await page.click('[data-view="airway"]'); await page.waitForTimeout(900);

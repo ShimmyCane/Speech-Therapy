@@ -71,20 +71,23 @@ function bodyAt(y) {
   }
   return BODY[BODY.length - 1];
 }
-export function buildSkin(material) {
+export function buildSkin(material, D = 1) {
   const ys = [];
-  for (let y = -300; y < 140; y += 22) ys.push(y);
-  for (let y = 140; y < 360; y += 7) ys.push(y);       // dense around the mouth and jaw
-  for (let y = 360; y <= 1250; y += 30) ys.push(y);
-  const NY = ys.length, NA = 48;
+  for (let y = -300; y < 140; y += 22 / D) ys.push(y);
+  for (let y = 140; y < 360; y += 7 / D) ys.push(y);       // dense around the mouth and jaw
+  for (let y = 360; y <= 1250; y += 30 / D) ys.push(y);
+  const NY = ys.length, NA = 48 * D;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NY * NA * 3), 3));
   const mesh = new THREE.Mesh(geo, material);
   const quads = [];
   for (let i = 0; i < NY - 1; i++) for (let j = 0; j < NA; j++) quads.push([i * NA + j, i * NA + (j + 1) % NA, (i + 1) * NA + j, (i + 1) * NA + (j + 1) % NA]);
-  let lastKey = '';
+  let lastKey = '', lastJaw = -1;
   const spow = (v, e) => Math.sign(v) * Math.pow(Math.abs(v), e);
   function update(jawDrop, hole) {
+    const key = hole.map((v) => Math.round(v / 2) * 2).join(',');
+    if (Math.abs(jawDrop - lastJaw) < 0.25 && key === lastKey) return;   // nothing moved
+    lastJaw = jawDrop;
     const pos = geo.attributes.position;
     for (let i = 0; i < NY; i++) {
       const [, xf, xb, hw] = bodyAt(ys[i]);
@@ -100,17 +103,14 @@ export function buildSkin(material) {
     }
     pos.needsUpdate = true;
     // open a hole where the mouth is, so the lips and teeth are not behind a film of skin
-    const key = hole.map((v) => Math.round(v)).join(',');
     if (key !== lastKey) {
       lastKey = key;
       const [yTop, yBot, half] = hole;
-      const idx = [];
-      const p = new THREE.Vector3();
+      const idx = [], a = pos.array;
       for (const q of quads) {
-        p.set(0, 0, 0);
-        for (const k of q) p.add(new THREE.Vector3().fromBufferAttribute(pos, k));
-        p.multiplyScalar(0.25);
-        const x = p.x * 100 + 300, y = 300 - p.y * 100, z = p.z * 100;
+        let x = 0, y = 0, z = 0;
+        for (const k of q) { x += a[k * 3]; y += a[k * 3 + 1]; z += a[k * 3 + 2]; }
+        x = x * 25 + 300; y = 300 - y * 25; z *= 25;
         if (x > 430 && y > yTop && y < yBot && Math.abs(z) < half) continue;
         idx.push(q[0], q[2], q[1], q[1], q[2], q[3]);
       }
@@ -122,18 +122,39 @@ export function buildSkin(material) {
 }
 
 // ---------- nose (outside) ----------
-export function buildNose(skinMat, nostrilMat) {
+// A shaped surface: bridge -> tip -> underside back to the lip, with a rounded cross-section that widens at the
+// wings (alae). Two dark nostrils sit underneath where the nasal cavity opens.
+export function buildNose(skinMat, nostrilMat, D = 1) {
   const g = new THREE.Group();
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), skinMat);
-  tip.scale.set(0.4, 0.15, 0.17); tip.position.copy(W(506, 133)); tip.rotation.z = -0.78;
-  const bridge = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), skinMat);
-  bridge.scale.set(0.3, 0.1, 0.12); bridge.position.copy(W(489, 104)); bridge.rotation.z = -1.0;
-  g.add(tip, bridge);
-  for (const z of [-17, 17]) {
-    const ala = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), skinMat);
-    ala.scale.set(0.15, 0.11, 0.1); ala.position.copy(W(496, 162, z)); g.add(ala);
-    const hole = new THREE.Mesh(new THREE.CircleGeometry(1, 18), nostrilMat);
-    hole.scale.set(0.075, 0.05, 1); hole.rotation.x = Math.PI / 2; hole.position.copy(W(503, 175, z * 0.55)); g.add(hole);
+  // side-view path of the ridge of the nose, and how wide / how far out it is at each point
+  const path = [[485, 88, 6, 3], [492, 104, 9, 9], [505, 122, 12, 18], [521, 138, 16, 26], [534, 150, 19, 30],
+    [536, 160, 21, 26], [526, 170, 23, 18], [510, 176, 21, 9], [497, 178, 16, 2]];
+  const NU = 24 * D, NV = 16 * D;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array((NU + 1) * (NV + 1) * 3);
+  const curve = new THREE.CatmullRomCurve3(path.map((q) => new THREE.Vector3(q[0], q[1], 0)));
+  for (let i = 0; i <= NU; i++) {
+    const t = i / NU, c = curve.getPoint(t), k = t * (path.length - 1), i0 = Math.min(path.length - 2, Math.floor(k)), f = k - i0;
+    const half = lerp(path[i0][2], path[i0 + 1][2], f), out = lerp(path[i0][3], path[i0 + 1][3], f);
+    for (let j = 0; j <= NV; j++) {
+      const a = (j / NV) * Math.PI - Math.PI / 2;        // from one cheek, over the ridge, to the other cheek
+      const ridge = Math.cos(a);
+      const x = c.x - out * (1 - ridge), z = half * Math.sin(a) * (1 + 0.25 * smooth((t - 0.55) / 0.3));
+      const v = W(x, c.y + (1 - ridge) * 3, z);
+      pos.set([v.x, v.y, v.z], (i * (NV + 1) + j) * 3);
+    }
+  }
+  const idx = [];
+  for (let i = 0; i < NU; i++) for (let j = 0; j < NV; j++) {
+    const a = i * (NV + 1) + j, b = a + 1, c = a + NV + 1, d = c + 1;
+    idx.push(a, c, b, b, c, d);
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  g.add(new THREE.Mesh(geo, skinMat));
+  for (const z of [-9, 9]) {
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(1, 18 * D), nostrilMat);
+    hole.scale.set(0.07, 0.042, 1); hole.rotation.x = Math.PI / 2; hole.rotation.z = z > 0 ? -0.35 : 0.35;
+    hole.position.copy(W(511, 177.5, z)); g.add(hole);
   }
   return g;
 }
@@ -152,9 +173,9 @@ export const EPIGLOTTIS = [[212, 380, 3, 10], [199, 354, 3, 17], [189, 336, 3, 1
 export const GLOTTIS = { x: 202, y: 433 };
 export const CARINA = { x: 200, y: 752 };
 
-export function buildTracheaRings(material) {
+export function buildTracheaRings(material, D = 1) {
   const g = new THREE.Group();
-  const geo = new THREE.TorusGeometry(0.19, 0.028, 6, 22, 5.2);
+  const geo = new THREE.TorusGeometry(0.19, 0.028, 6 * D, 22 * D, 5.2);
   geo.rotateX(Math.PI / 2); geo.rotateY(2.6);       // open side of the "C" faces the food pipe at the back
   for (let y = 484; y <= 738; y += 19) {
     const m = new THREE.Mesh(geo, material);
@@ -165,17 +186,17 @@ export function buildTracheaRings(material) {
 }
 
 // ---------- bronchi: a small branching tree into each lung ----------
-export function buildBronchi(material) {
+export function buildBronchi(material, D = 1) {
   const g = new THREE.Group();
   const add = (a, b, r) => {
     const pa = W(a[0], a[1], a[2]), pb = W(b[0], b[1], b[2]);
     const len = pa.distanceTo(pb);
-    const geo = new THREE.CylinderGeometry(r * 0.8 / 100, r / 100, len, 10, 1, true);
+    const geo = new THREE.CylinderGeometry(r * 0.8 / 100, r / 100, len, 10 * D, 1, true);
     const m = new THREE.Mesh(geo, material);
     m.position.copy(pa).add(pb).multiplyScalar(0.5);
     m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pb.clone().sub(pa).normalize());
     g.add(m);
-    const j = new THREE.Mesh(new THREE.SphereGeometry(r * 0.8 / 100, 10, 8), material); j.position.copy(pb); g.add(j);
+    const j = new THREE.Mesh(new THREE.SphereGeometry(r * 0.8 / 100, 10 * D, 8 * D), material); j.position.copy(pb); g.add(j);
   };
   let seed = 7;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -207,17 +228,19 @@ const normalize3 = (v) => { const n = Math.hypot(...v); return v.map((x) => x / 
 
 // ---------- lungs ----------
 export const LUNGS = { right: { c: [200, 945, 138], r: [118, 228, 100] }, left: { c: [200, 955, -132], r: [112, 218, 90] } };
-export function buildLung(material, side) {
-  const geo = new THREE.SphereGeometry(1, 48, 32);
-  const pos = geo.attributes.position, med = side === 'right' ? -1 : 1;
-  for (let i = 0; i < pos.count; i++) {
-    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    if (y > 0) { const s = 1 - 0.5 * y * y; x *= s; z *= s; }                         // narrow, rounded top (apex)
-    if (y < -0.35) y += 0.42 * (1 - Math.min(1, x * x + z * z)) * smooth((-y - 0.35) / 0.65); // sits on the dome of the diaphragm
-    if (z * med > 0) z *= 0.42;                                                         // flat inner side, room for the heart
-    if (side === 'left' && x > 0.15 && z > 0 && y < 0.15 && y > -0.8) { x *= 0.72; z *= 0.7; } // cardiac notch
-    pos.setXYZ(i, x, y, z);
-  }
+// Shape a point of a unit sphere into a lung (in the lung's own scaled space).
+function lungShape(x, y, z, side) {
+  const med = side === 'right' ? -1 : 1;
+  if (y > 0) { const s = 1 - 0.5 * y * y; x *= s; z *= s; }                           // narrow, rounded top (apex)
+  if (y < -0.35) y += 0.42 * (1 - Math.min(1, x * x + z * z)) * smooth((-y - 0.35) / 0.65); // sits on the dome of the diaphragm
+  if (z * med > 0) z *= 0.42;                                                           // flat inner side, room for the heart
+  if (side === 'left' && x > 0.15 && z > 0 && y < 0.15 && y > -0.8) { x *= 0.72; z *= 0.7; } // cardiac notch
+  return [x, y, z];
+}
+export function buildLung(material, side, D = 1) {
+  const geo = new THREE.SphereGeometry(1, 48 * D, 32 * D);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setXYZ(i, ...lungShape(pos.getX(i), pos.getY(i), pos.getZ(i), side));
   geo.computeVertexNormals();
   const L = LUNGS[side];
   const m = new THREE.Mesh(geo, material);
@@ -226,8 +249,32 @@ export function buildLung(material, side) {
   m.userData.base = m.scale.clone();
   return m;
 }
-export function buildDiaphragm(material) {
-  const geo = new THREE.SphereGeometry(1, 40, 12, 0, Math.PI * 2, 0, Math.PI / 2.3);
+// Fissures: the grooves that split the lungs into lobes (right: oblique + horizontal = 3 lobes; left: oblique = 2).
+export function buildFissures(material, D = 1) {
+  const g = new THREE.Group();
+  const line = (side, plane) => {
+    const L = LUNGS[side], pts = [];
+    for (let k = 0; k <= 64; k++) {
+      // walk round the sphere along a great-ish circle given by the plane, keeping the outer (lateral) half
+      const a = (k / 64) * Math.PI * 2;
+      let [x, y, z] = plane(a);
+      const n = Math.hypot(x, y, z) || 1; x /= n; y /= n; z /= n;
+      if ((side === 'right' ? z : -z) < -0.15) continue;
+      const [sx, sy, sz] = lungShape(x * 1.01, y * 1.01, z * 1.01, side);
+      pts.push(W(L.c[0] + sx * L.r[0], L.c[1] - sy * L.r[1], L.c[2] + sz * L.r[2]));
+    }
+    if (pts.length < 4) return;
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40 * D, 0.012, 5, false), material));
+  };
+  // oblique: from high at the back down to low at the front
+  const oblique = (a) => [Math.cos(a), -0.55 * Math.cos(a) - 0.1, Math.sin(a)];
+  line('right', oblique); line('left', oblique);
+  // horizontal (right only): roughly level, front half
+  line('right', (a) => [Math.cos(a) * 0.95 + 0.25, 0.18, Math.sin(a)]);
+  return g;
+}
+export function buildDiaphragm(material, D = 1) {
+  const geo = new THREE.SphereGeometry(1, 40 * D, 12 * D, 0, Math.PI * 2, 0, Math.PI / 2.3);
   const m = new THREE.Mesh(geo, material);
   m.scale.set(2.9, 0.75, 3.1); m.position.copy(W(190, 1185));
   m.userData.y = m.position.y;

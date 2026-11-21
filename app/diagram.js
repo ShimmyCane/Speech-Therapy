@@ -17,6 +17,7 @@ function contactPoint(sound, p) {
     case 'ridge': return [438, 133];
     case 'hiss': return [440, 140];
     case 'palate': return [385, 104];
+    case 'front': return [405, 103];
     case 'back': return [262, 98];
     case 'throat': return [168, 330];
     default: return null;
@@ -88,14 +89,14 @@ export function mouthSVG(p = REST, opts = {}) {
 
 // Labelled parts of the mouth. Each part names a group colour so the tabs match.
 export const PARTS = [
-  { id: 'lips',    name: 'Lips',            group: 'lips',     at: [488, 168], label: [560, 215], text: 'Lips press together (p, b, m), round (w, oo) or spread in a smile (ee, s).', sounds: ['P', 'B', 'M', 'W'] },
-  { id: 'teeth',   name: 'Teeth',           group: 'teethlip', at: [452, 170], label: [560, 262], text: 'Top teeth touch the bottom lip for F and V. For S, the teeth sit close together. For TH, the tongue peeks between them.', sounds: ['F', 'V', 'TH', 'S'] },
-  { id: 'ridge',   name: 'Bumpy ridge',     group: 'ridge',    at: [438, 130], label: [560, 105], text: 'The bumpy part just behind your top teeth. The tongue tip taps here for T, D, N and L, and sits just under it for S and Z.', sounds: ['T', 'D', 'N', 'L', 'S', 'Z'] },
-  { id: 'palate',  name: 'Hard roof',       group: 'palate',   at: [370, 96],  label: [370, 40],  text: 'The hard bony roof. The tongue bunches up toward it for SH, CH, J, R and Y.', sounds: ['SH', 'CH', 'R', 'Y'] },
-  { id: 'velum',   name: 'Soft roof',       group: 'back',     at: [255, 98],  label: [220, 40],  text: 'The soft, squishy back of the roof. The back of the tongue lifts to touch it for K and G.', sounds: ['K', 'G', 'NG'] },
-  { id: 'tonguetip', name: 'Tongue tip',    group: 'ridge',    at: [430, 224], label: [330, 420], text: 'The tip is the busiest part. It points up, down, or out depending on the sound.', sounds: ['T', 'D', 'S', 'TH'] },
-  { id: 'tongueback', name: 'Back of tongue', group: 'back',  at: [230, 236], label: [20, 250], text: 'The back of the tongue lifts for K, G and ng, and pulls back for R and oo.', sounds: ['K', 'G', 'R'] },
-  { id: 'voice',   name: 'Voice box',       group: 'throat',   at: [168, 330], label: [20, 330], text: 'Your vocal folds buzz when your voice is ON (b, d, z, vowels) and stay still when it is OFF (p, t, s).', sounds: ['H', 'Z', 'S'] },
+  { id: 'lips',    name: 'Lips',            group: 'lips',     at: [488, 168], label: [560, 215], text: 'Lips press together (p, b, m), round (w, oo) or spread in a smile (ee, s).', sounds: ['P', 'B', 'M', 'W'], zh: ['zh_b', 'zh_p', 'zh_m', 'zh_u'] },
+  { id: 'teeth',   name: 'Teeth',           group: 'teethlip', at: [452, 170], label: [560, 262], text: 'Top teeth touch the bottom lip for F and V. For S, the teeth sit close together. For TH, the tongue peeks between them.', sounds: ['F', 'V', 'TH', 'S'], zh: ['zh_f', 'zh_z', 'zh_c', 'zh_s'] },
+  { id: 'ridge',   name: 'Bumpy ridge',     group: 'ridge',    at: [438, 130], label: [560, 105], text: 'The bumpy part just behind your top teeth. The tongue tip taps here for T, D, N and L, and sits just under it for S and Z.', sounds: ['T', 'D', 'N', 'L', 'S', 'Z'], zh: ['zh_d', 'zh_t', 'zh_n', 'zh_l', 'zh_an'] },
+  { id: 'palate',  name: 'Hard roof',       group: 'palate',   at: [370, 96],  label: [370, 40],  text: 'The hard bony roof. The tongue bunches up toward it for SH, CH, J, R and Y (in Mandarin: zh ch sh r curl up to it, j q x press the front of the tongue on it).', sounds: ['SH', 'CH', 'R', 'Y'], zh: ['zh_zh', 'zh_ch', 'zh_sh', 'zh_r', 'zh_j', 'zh_q', 'zh_x'] },
+  { id: 'velum',   name: 'Soft roof',       group: 'back',     at: [255, 98],  label: [220, 40],  text: 'The soft, squishy back of the roof. The back of the tongue lifts to touch it for K and G.', sounds: ['K', 'G', 'NG'], zh: ['zh_g', 'zh_k', 'zh_h', 'zh_ang'] },
+  { id: 'tonguetip', name: 'Tongue tip',    group: 'ridge',    at: [430, 224], label: [330, 420], text: 'The tip is the busiest part. It points up, down, or out depending on the sound.', sounds: ['T', 'D', 'S', 'TH'], zh: ['zh_z', 'zh_zh', 'zh_j'] },
+  { id: 'tongueback', name: 'Back of tongue', group: 'back',  at: [230, 236], label: [20, 250], text: 'The back of the tongue lifts for K, G and ng, and pulls back for R and oo.', sounds: ['K', 'G', 'R'], zh: ['zh_g', 'zh_k', 'zh_ng'] },
+  { id: 'voice',   name: 'Voice box',       group: 'throat',   at: [168, 330], label: [20, 330], text: 'Your vocal folds buzz when your voice is ON (b, d, z, vowels) and stay still when it is OFF (p, t, s).', sounds: ['H', 'Z', 'S'], zh: ['zh_t1', 'zh_t2', 'zh_t3', 'zh_t4'] },
 ];
 
 export function anatomySVG() {
