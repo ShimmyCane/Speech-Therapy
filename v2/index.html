@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffd23f">
+  <title>Felix's Sounds (V2 archive)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Patrick+Hand&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app/style.css?v=1">
+  <script type="importmap">{ "imports": { "three": "../vendor/three.module.js" } }</script>
+</head>
+<body>
+<div class="app">
+  <div class="archive-banner">Archived version 2 (lungs-to-nose model, Nov 2026). <a href="../index.html">Go to the current app →</a></div>
+  <header class="top">
+    <button class="link title" id="home" aria-label="Home">🎈 <span id="who">Felix</span>'s Sounds</button>
+    <span><span class="status-pill hidden" id="lock-pill">🔒</span><span class="status-pill" id="net-pill">local only</span></span>
+  </header>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Sections"></nav>
+  <div class="legend slim" id="legend" aria-label="Colour key"></div>
+  <main id="screen"></main>
+</div>
+
+<button class="gear" id="gear" aria-label="Settings">⚙️</button>
+<div class="scrim hidden" id="scrim"></div>
+<aside class="drawer hidden" id="drawer" role="dialog" aria-label="Settings">
+  <div class="row between"><h2>Settings</h2><button class="btn small" id="close-drawer">Close</button></div>
+  <div id="drawer-body"></div>
+</aside>
+<div class="toast hidden" id="toast" role="status"></div>
+<script type="module" src="app/main.js?v=1"></script>
+</body>
+</html>

@@ -12,6 +12,8 @@ const TABS = [
   { id: 'words', icon: '🃏', name: 'Words' },
 ];
 const APP_VERSIONS = [
+  { v: '3.0', date: '2026-11-21', text: 'Chinese (Mandarin) mode: a Settings switch turns every tab to Mandarin initials, finals and tones, with pitch contours. 3D model at 4x mesh detail with nicer lighting and materials. V2 archived.' },
+  { v: '2.1', date: '2026-11-21', text: '3D model shows the whole speech system from lungs to nose, with airflow that matches each sound. Archived as V2.' },
   { v: '2.0', date: '2026-11-12', text: 'New home with five tabs: Survey, Videos, Diagrams, 3D Mouth, Words. One colour system for how the mouth moves. People profiles with notes, lock-in and a version log. V1 archived.' },
   { v: '1.x', date: 'before 2026-11', text: 'Original lesson app (listen, say, stars) and the Voice Booth. Still runnable from Settings.' },
 ];
@@ -439,9 +441,10 @@ function renderDrawer() {
       <pre class="note" id="s-out-text"></pre></div>
     <div class="card"><h2>App versions</h2>
       <ul class="log">${APP_VERSIONS.map((v) => `<li><b>v${v.v}</b> <span class="note">${esc(v.date)}</span><div>${esc(v.text)}</div></li>`).join('')}</ul></div>
-    <div class="card"><h2>V1 (archived)</h2>
-      <p class="note">The original lesson app still runs from here.</p>
-      <div class="row wrap"><a class="btn small sun" href="v1/index.html">Open V1 lessons</a><a class="btn small sun" href="v1/public/booth.html">🎙️ Voice Booth</a></div></div>`;
+    <div class="card"><h2>Earlier versions (archived)</h2>
+      <p class="note">Older versions still run from here. They share the same saved answers.</p>
+      <div class="row wrap"><a class="btn small sun" href="v2/index.html">V2: five tabs + lungs-to-nose 3D</a></div>
+      <div class="row wrap" style="margin-top:8px"><a class="btn small sun" href="v1/index.html">V1 lessons</a><a class="btn small sun" href="v1/public/booth.html">🎙️ V1 Voice Booth</a></div></div>`;
   const rerender = () => { store.setNotes($('#s-notes').value); };
   $('#s-person').addEventListener('change', (e) => { store.setActive(e.target.value); st.surveyMode = null; st.surveyIdx = 0; st.deckOrder = []; renderDrawer(); renderScreen(); });
   $('#s-add').addEventListener('click', () => { const n = prompt('Name of the new person?'); if (n) { store.addProfile(n); st.surveyMode = null; st.surveyIdx = 0; st.deckOrder = []; renderDrawer(); renderScreen(); } });
