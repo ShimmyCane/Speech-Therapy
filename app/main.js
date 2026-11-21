@@ -261,7 +261,7 @@ async function renderMouth3D(root) {
   root.innerHTML = `
     <div class="card">
       <h2>3D mouth</h2>
-      <p class="note">A stylised, child-friendly model of the inside of the mouth. Pick a sound, or pick a word and watch the tongue, lips and jaw move one sound at a time. Drag to turn it.</p>
+      <p class="note">A stylised model of how we talk, from the lungs to the lips and nose. Pick a word and watch the air come up from the lungs, the voice box buzz (or not), and the tongue, lips and soft palate shape each sound. Drag to turn it.</p>
       <div class="stage" id="stage"><div class="stage-msg" id="stage-msg">Loading 3D…</div></div>
       <div class="bigword" id="word-now">${wordHTML(st.threeWord)}</div>
       <div class="row wrap">
@@ -276,8 +276,9 @@ async function renderMouth3D(root) {
         <span class="lbl">Speed</span>
         ${[0.5, 0.75, 1].map((s) => `<button class="btn small spd${(store.ui().slow || 1) === s ? ' on' : ''}" data-spd="${s}">${s}×</button>`).join('')}
         <span class="lbl">View</span>
-        ${[['side', 'Side'], ['angle', '3/4'], ['front', 'Front'], ['other', 'Other side']].map(([v, n]) => `<button class="btn small" data-view="${v}">${n}</button>`).join('')}
+        ${[['side', 'Mouth'], ['airway', 'Lungs to nose'], ['angle', '3/4'], ['front', 'Front'], ['other', 'Other side']].map(([v, n]) => `<button class="btn small" data-view="${v}">${n}</button>`).join('')}
         <label class="toggle"><input type="checkbox" id="cut" ${store.ui().cutaway ? 'checked' : ''}> Cutaway</label>
+        <label class="toggle"><input type="checkbox" id="lbls" ${store.ui().labels !== false ? 'checked' : ''}> Labels</label>
       </div>
     </div>
     <div class="card"><h2>Jump to a sound</h2><div class="legend">${legendHTML()}</div>
@@ -295,7 +296,7 @@ async function renderMouth3D(root) {
       onCount: (n, where) => { const el = $('#count-note'); if (!el) return; el.innerHTML = where === 'done' ? 'A child has <b>20</b> baby teeth: <b>10</b> on top and <b>10</b> on the bottom.' : `<b style="font-size:26px">${n}</b> (${where})`; },
       onPhoneme: (pid) => { $('#word-now') && ($('#word-now').innerHTML = wordHTML(st.threeWord, pid)); if (pid) $('#snd-text').innerHTML = `<b style="color:${colorOf(pid)}">${esc(SOUNDS[pid].label)}.</b> ${esc(SOUNDS[pid].how)}`; },
     });
-    st.three.setCutaway(store.ui().cutaway); st.three.setSpeed(store.ui().slow || 1);
+    st.three.setCutaway(store.ui().cutaway); st.three.setLabels(store.ui().labels !== false); st.three.setSpeed(store.ui().slow || 1);
   } catch (e) {
     stage.innerHTML = `<div class="stage-msg">3D could not start here (${esc(e.message || e)}). The Diagrams tab shows the same shapes in 2D.</div>`;
     return;
@@ -319,6 +320,7 @@ async function renderMouth3D(root) {
   root.querySelectorAll('[data-spd]').forEach((b) => b.addEventListener('click', () => { store.setUi({ slow: Number(b.dataset.spd) }); st.three.setSpeed(Number(b.dataset.spd)); root.querySelectorAll('.spd').forEach((x) => x.classList.toggle('on', x === b)); }));
   root.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => st.three.view(b.dataset.view)));
   $('#cut').addEventListener('change', (e) => { store.setUi({ cutaway: e.target.checked }); st.three.setCutaway(e.target.checked); });
+  $('#lbls').addEventListener('change', (e) => { store.setUi({ labels: e.target.checked }); st.three.setLabels(e.target.checked); });
   root.querySelectorAll('[data-3d]').forEach((b) => b.addEventListener('click', () => jumpToSound(b.dataset['3d'])));
   if (st.threeSound) { jumpToSound(st.threeSound); st.threeSound = null; }
   window.__three = st.three;

@@ -50,3 +50,10 @@ Questions and answers from review. Each answer is a decision to build against.
 - Per-person profiles with notes, lock-in and version log. Data in `supabase/schema_v2.sql` (not yet applied).
 - Research primer: `research_approach/README.md`.
 - To do: apply `schema_v2.sql`; check the video links and the reference links open; review mouth models with an SLP; photo/book word import; richer surveys per sound.
+
+## 3D model: lungs to nose (2026-11)
+
+- The 3D tab now shows the whole speech system: nose and nasal cavity, mouth, soft palate and uvula, throat, epiglottis, voice box with vocal folds, windpipe, food pipe, bronchi, lungs and diaphragm. Views: "Mouth" and "Lungs to nose".
+- Air comes up from the lungs for every sound: out of the mouth for vowels and hissy sounds, out of the nose for m, n, ng, and held then popped for p, b, t, d, k, g. The vocal folds close and buzz for voiced sounds and open for voiceless ones; the label says "buzzing" or "quiet".
+- Headless checks: `node tests/mouth3d.headless.js [folder-for-screenshots]` (needs Playwright + Chromium). 28 checks, plus a 360° spin of both views, cutaway and see-through.
+- To do: check the model with a speech therapist; try it on the iPad (about 150 draw calls, 60k triangles).
