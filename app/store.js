@@ -1,6 +1,6 @@
 // Local-first store, with optional sync to the Family Supabase project.
 // Everything works offline (localStorage). If a signed-in session exists, changes are pushed to the speech_v2_* tables.
-import { SURVEY, SOUNDS, soundsOf } from './data.js';
+import { SURVEY, SOUNDS, WORDS, soundsOf, currentLang } from './data.js';
 
 export const SUPABASE_URL = 'https://twvqvutrcobedvuhnzxq.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_eqUo8HEdEB1hMQM4CpSVqA_9i6b0qCo';
@@ -22,7 +22,7 @@ function blank() {
     versions: {},    // { [profileId]: [ { id, kind, label, note, t, snapshot } ] }
     practice: {},    // { [profileId]: { [isoWeek]: seconds } }
     custom: {},      // { [profileId]: [ words ] }
-    ui: { cutaway: true, slow: 1 },
+    ui: { cutaway: true, slow: 1, lang: 'en', detail: 2 },
   };
 }
 function load() {
@@ -54,16 +54,22 @@ export function setNotes(notes) { const p = active(); p.notes = notes; p.updated
 export const surveyAnswers = () => (data.survey[active().id] ||= {});
 export function answerSurvey(key, v) {
   if (active().locked) return false;
-  surveyAnswers()[key] = { v, t: now() }; persist(); return true;
+  surveyAnswers()[key] = { v, t: now(), s: SURVEY.id }; persist(); return true;
 }
-export function resetSurvey() { if (active().locked) return false; data.survey[active().id] = {}; persist(); return true; }
-export const surveyDone = () => Object.keys(surveyAnswers()).length;
+// English and Mandarin answers live side by side; these only touch the current language's survey.
+export function resetSurvey() {
+  if (active().locked) return false;
+  const a = surveyAnswers(); for (const it of SURVEY.items) delete a[it.key];
+  persist(); return true;
+}
+export const surveyDone = () => SURVEY.items.filter((it) => surveyAnswers()[it.key]).length;
 
 // ---- flashcard flags: 0 easy, 1 tricky, 2 really tricky ----
 export const flags = () => (data.flags[active().id] ||= {});
 export function flagWord(word, v) { flags()[word] = { v, t: now() }; persist(); }
 
-export const customWords = () => (data.custom[active().id] ||= []);
+const customKey = () => active().id + (currentLang() === 'zh' ? ':zh' : '');
+export const customWords = () => (data.custom[customKey()] ||= []);
 export function addCustomWords(list) {
   const c = customWords();
   for (const w of list) if (w && !c.includes(w)) c.push(w);
@@ -94,7 +100,8 @@ export function heat() {
     const a = surveyAnswers()[it.key];
     if (a) it.focus.forEach((pid) => add(pid, a.v));
   }
-  for (const [w, o] of Object.entries(flags())) soundsOf(w).forEach((pid) => add(pid, o.v / 2));
+  const mine = new Set(customWords());
+  for (const [w, o] of Object.entries(flags())) if (WORDS[w] || mine.has(w)) soundsOf(w).forEach((pid) => add(pid, o.v / 2));
   const out = {};
   for (const [pid, a] of Object.entries(acc)) if (SOUNDS[pid]) out[pid] = { n: a.n, heat: a.sum / a.n };
   return out;
@@ -102,7 +109,7 @@ export function heat() {
 
 // ---- versions: snapshots of the heat map + notes, per person ----
 export const versions = () => (data.versions[active().id] ||= []);
-function snap() { return { heat: heat(), notes: active().notes, survey: surveyDone(), flags: Object.keys(flags()).length }; }
+function snap() { return { lang: currentLang(), heat: heat(), notes: active().notes, survey: surveyDone(), flags: Object.keys(flags()).length }; }
 export function addVersion(kind, label, note = '') {
   const v = { id: uid(), kind, label, note, t: now(), snapshot: snap() };
   versions().unshift(v); persist(); return v;
@@ -153,7 +160,7 @@ export async function push() {
     };
     await run('speech_v2_profiles', data.profiles.map((p) => ({ id: p.id, name: p.name, notes: p.notes, locked: p.locked, locked_at: p.lockedAt ? iso(p.lockedAt) : null, updated_at: iso(p.updated) })), 'id');
     const answers = [], fl = [], vers = [];
-    for (const [pid, m] of Object.entries(data.survey)) for (const [k, a] of Object.entries(m)) answers.push({ profile_id: pid, survey_id: SURVEY.id, item_key: k, tricky: a.v, updated_at: iso(a.t) });
+    for (const [pid, m] of Object.entries(data.survey)) for (const [k, a] of Object.entries(m)) answers.push({ profile_id: pid, survey_id: a.s || 'quick-1', item_key: k, tricky: a.v, updated_at: iso(a.t) });
     for (const [pid, m] of Object.entries(data.flags)) for (const [w, a] of Object.entries(m)) fl.push({ profile_id: pid, word: w, level: a.v, updated_at: iso(a.t) });
     for (const [pid, arr] of Object.entries(data.versions)) for (const v of arr) vers.push({ id: v.id, profile_id: pid, kind: v.kind, label: v.label, note: v.note, snapshot: v.snapshot, created_at: iso(v.t) });
     await run('speech_v2_survey_answers', answers, 'profile_id,survey_id,item_key');
@@ -176,7 +183,7 @@ export async function pull() {
       if (!have) data.profiles.push({ id: p.id, name: p.name, notes: p.notes || '', locked: p.locked, lockedAt: p.locked_at ? Date.parse(p.locked_at) : null, created: upd, updated: upd });
       else if (upd > have.updated) Object.assign(have, { name: p.name, notes: p.notes || '', locked: p.locked, lockedAt: p.locked_at ? Date.parse(p.locked_at) : null, updated: upd });
     }
-    for (const r of an.data) { const m = (data.survey[r.profile_id] ||= {}); const t = Date.parse(r.updated_at); if (!m[r.item_key] || m[r.item_key].t < t) m[r.item_key] = { v: r.tricky, t }; }
+    for (const r of an.data) { const m = (data.survey[r.profile_id] ||= {}); const t = Date.parse(r.updated_at); if (!m[r.item_key] || m[r.item_key].t < t) m[r.item_key] = { v: r.tricky, t, s: r.survey_id }; }
     for (const r of fl.data) { const m = (data.flags[r.profile_id] ||= {}); const t = Date.parse(r.updated_at); if (!m[r.word] || m[r.word].t < t) m[r.word] = { v: r.level, t }; }
     for (const r of ve.data) { const a = (data.versions[r.profile_id] ||= []); if (!a.find((x) => x.id === r.id)) a.push({ id: r.id, kind: r.kind, label: r.label, note: r.note, t: Date.parse(r.created_at), snapshot: r.snapshot }); }
     for (const a of Object.values(data.versions)) a.sort((x, y) => y.t - x.t);

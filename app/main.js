@@ -1,4 +1,5 @@
-import { GROUPS, SOUNDS, SOUND_ORDER, DECKS, WORDS, SURVEY, VIDEOS, VIDEO_TOPICS, REFERENCES, colorOf, groupOf, wordInfo, soundsOf } from './data.js';
+import { GROUPS, SOUNDS, SOUND_ORDER, DECKS, WORDS, SURVEY, VIDEOS, VIDEO_TOPICS, REFERENCES, colorOf, groupOf, wordInfo, soundsOf, setLanguage, currentLang, activeGroups } from './data.js';
+import { TONES, TONE_NAMES } from './data_zh.js';
 import { mouthSVG, anatomySVG, PARTS } from './diagram.js';
 import * as store from './store.js';
 
@@ -12,6 +13,8 @@ const TABS = [
   { id: 'words', icon: '🃏', name: 'Words' },
 ];
 const APP_VERSIONS = [
+  { v: '3.0', date: '2026-11-21', text: 'Chinese (Mandarin) mode: a Settings switch turns every tab to Mandarin initials, finals and tones, with pitch contours. 3D model at 4x mesh detail with nicer lighting and materials. V2 archived.' },
+  { v: '2.1', date: '2026-11-21', text: '3D model shows the whole speech system from lungs to nose, with airflow that matches each sound. Archived as V2.' },
   { v: '2.0', date: '2026-11-12', text: 'New home with five tabs: Survey, Videos, Diagrams, 3D Mouth, Words. One colour system for how the mouth moves. People profiles with notes, lock-in and a version log. V1 archived.' },
   { v: '1.x', date: 'before 2026-11', text: 'Original lesson app (listen, say, stars) and the Voice Booth. Still runnable from Settings.' },
 ];
@@ -21,8 +24,44 @@ const st = { tab: 'survey', surveyIdx: 0, surveyMode: null, deckId: 'recommended
 
 /* ---------- shared pieces ---------- */
 
-function wordHTML(word, activeSound = null) {
+const zh = () => currentLang() === 'zh';
+// Pitch line for a tone on the 1 (low) .. 5 (high) scale.
+function toneSVG(tone, { w = 46, h = 26, on = false, written = 0 } = {}) {
+  const c = TONES[tone] || [3, 3];
+  const pt = (lvl, i) => `${4 + (i / (c.length - 1)) * (w - 8)},${h - 3 - ((lvl - 1) / 4) * (h - 6)}`;
+  const line = c.map(pt).join(' ');
+  const note = written && written !== tone ? `<title>Written tone ${written}, said as tone ${tone}</title>` : `<title>Tone ${tone === 5 ? '0' : tone}: ${TONE_NAMES[tone]}</title>`;
+  return `<svg class="tone${on ? ' on' : ''}" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">${note}
+    <line x1="2" y1="${h - 3}" x2="${w - 2}" y2="${h - 3}" class="base"/><line x1="2" y1="3" x2="${w - 2}" y2="3" class="base"/>
+    <polyline points="${line}" class="pitch${tone === 5 ? ' light' : ''}"/>${written && written !== tone ? '<circle cx="' + (w - 5) + '" cy="5" r="3" class="sandhi"/>' : ''}</svg>`;
+}
+// Mandarin: characters on top, coloured pinyin underneath (initial and final), optional pitch lines.
+function zhWordHTML(info, activeSound, { tones = false, activeSyl = -1 } = {}) {
+  if (!info.syl.length) return `<span class="zhw"><span class="syl"><span class="hz">${esc(info.word)}</span></span></span>`;
+  return `<span class="zhw" lang="zh">${info.syl.map((sy, k) => {
+    const parts = info.segs.filter((sg) => sg.syl === k).map((sg) => {
+      const dim = activeSound !== null && !sg.p.includes(activeSound) ? ' dim' : '';
+      return `<span class="g${dim}" data-sound="${sg.p[0]}" style="color:${colorOf(sg.p[0])}" title="${sg.p.map((p) => SOUNDS[p]?.label || p).join(' + ')}">${esc(sg.g)}</span>`;
+    }).join('');
+    return `<span class="syl${activeSyl === k ? ' now' : ''}">${sy.hz ? `<span class="hz">${esc(sy.hz)}</span>` : ''}<span class="py">${parts}</span>${tones ? toneSVG(sy.spoken, { written: sy.tone, on: activeSyl === k }) : ''}</span>`;
+  }).join('')}</span>`;
+}
+// Say a Mandarin word with the device's Chinese voice (if it has one).
+function say(word) {
+  try {
+    const info = wordInfo(word);
+    const u = new SpeechSynthesisUtterance(info.hanzi || info.pinyin || word);
+    u.lang = 'zh-CN'; u.rate = 0.7;
+    const v = speechSynthesis.getVoices().find((x) => /^zh[-_](CN|Hans)/i.test(x.lang));
+    if (v) u.voice = v;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  } catch (_) { toast('This device cannot speak Chinese.', true); }
+}
+const sayBtn = (word, id = '') => (zh() ? `<button class="btn small sun say" ${id ? `id="${id}"` : ''} data-say="${esc(word)}" title="Hear it (device voice)">🔊 Hear it</button>` : '');
+
+function wordHTML(word, activeSound = null, opts = {}) {
   const info = wordInfo(word);
+  if (info.zh) return zhWordHTML(info, activeSound, opts);
   return info.segs.map((s) => {
     if (!s.p.length) return `<span class="g silent" title="silent">${esc(s.g)}</span>`;
     const c = colorOf(s.p[0]);
@@ -37,12 +76,12 @@ function soundChip(pid, extra = '') {
   return `<button class="schip" data-open-sound="${pid}" style="--c:${g.color};--t:${g.tint}" title="${esc(s.label)}"><b>${esc(s.spell)}</b>${extra}</button>`;
 }
 function legendHTML() {
-  return Object.entries(GROUPS).map(([id, g]) => `<span class="lg" style="--c:${g.color};--t:${g.tint}" title="${esc(g.blurb)}"><i></i>${esc(g.name)}</span>`).join('');
+  return activeGroups().map((id) => [id, GROUPS[id]]).map(([id, g]) => `<span class="lg" style="--c:${g.color};--t:${g.tint}" title="${esc(g.blurb)}"><i></i>${esc(g.name)}</span>`).join('');
 }
 function heatGridHTML() {
   const h = store.heat();
   let any = false;
-  const rows = Object.entries(GROUPS).map(([gid, g]) => {
+  const rows = activeGroups().map((gid) => [gid, GROUPS[gid]]).map(([gid, g]) => {
     const tiles = SOUND_ORDER.filter((p) => SOUNDS[p].group === gid).map((p) => {
       const d = h[p];
       if (d) any = true;
@@ -85,6 +124,8 @@ function renderScreen() {
 }
 
 document.addEventListener('click', (e) => {
+  const sb = e.target.closest('[data-say]');
+  if (sb) return say(sb.dataset.say);
   const t = e.target.closest('[data-tab]');
   if (t) return go(t.dataset.tab);
   const so = e.target.closest('[data-open-sound]');
@@ -112,7 +153,9 @@ function renderSurvey(root) {
         <div class="row between"><h2>${esc(SURVEY.title)} for ${esc(p.name)}</h2><span class="counter">${st.surveyIdx + 1} / ${items.length}</span></div>
         <div class="progress"><i style="width:${(done / items.length) * 100}%"></i></div>
         <p class="note">${esc(SURVEY.intro)}</p>
-        <div class="bigword" id="sv-word">${wordHTML(it.word)}</div>
+        <div class="bigword" id="sv-word">${wordHTML(it.word, null, { tones: true })}</div>
+        ${wordInfo(it.word).gloss ? `<p class="center gloss">${esc(wordInfo(it.word).gloss)}</p>` : ''}
+        <div class="row" style="justify-content:center">${sayBtn(it.word)}</div>
         <p class="note center">Focus sound: ${it.focus.map((f) => soundChip(f)).join(' ')}</p>
         <p class="center q">Is this easy to say?</p>
         <div class="toggle2" role="group" aria-label="Easy or tricky">
@@ -184,7 +227,7 @@ function renderVideos(root) {
     <div class="card">
       <h2>Watch and learn</h2>
       <p class="note">${hasData ? `Ranked for ${esc(name)}: the topics that match the trickiest sounds come first.` : `Do the survey and the videos will re-order themselves for ${esc(name)}.`}
-      Videos are from speech therapists, for children and parents, with a few adult learners' guides.</p>
+      ${zh() ? 'Videos are from Mandarin teachers: some for children, some for adult beginners.' : "Videos are from speech therapists, for children and parents, with a few adult learners' guides."}</p>
     </div>
     ${topics.map((t, rank) => `
       <div class="card topic" style="--c:${colorOf(t.sounds[0])}">
@@ -210,7 +253,7 @@ function videoCard(v) {
 /* ---------- 3. DIAGRAMS ---------- */
 
 function renderDiagrams(root) {
-  const s = SOUNDS[st.sound] || SOUNDS.S;
+  const s = SOUNDS[st.sound] || SOUNDS[SOUND_ORDER[0]];
   const examples = Object.keys(WORDS).filter((w) => soundsOf(w).includes(s.id)).slice(0, 8);
   root.innerHTML = `
     <div class="card">
@@ -226,7 +269,10 @@ function renderDiagrams(root) {
     </div>
     <div class="card" id="sound-card" style="--c:${groupOf(s.id).color};--t:${groupOf(s.id).tint}">
       <h2>${esc(s.label)}</h2>
-      <div class="diagram">${mouthSVG(s.params, { sound: s.id })}</div>
+      ${s.kind === 'tone'
+        ? `<div class="diagram tone-big">${toneSVG(s.tone, { w: 320, h: 150 })}<p class="note center">Voice pitch from low (bottom) to high (top). The vocal folds stretch for high notes and relax for low ones.</p></div>`
+        : `<div class="diagram">${mouthSVG(s.params, { sound: s.id })}</div>`}
+      ${s.seq && s.seq.length > 1 ? `<p class="note">This final is ${s.seq.length} mouth shapes in a row:</p><div class="seq">${s.seq.map((p, k) => `<div class="seqstep"><div class="diagram small">${mouthSVG(p, { sound: s.id })}</div><b>${k + 1}. ${esc(s.targets[k])}</b></div>`).join('<span class="arrow">→</span>')}</div>` : ''}
       <div class="mouth">${esc(s.how)}</div>
       <p class="note"><b>${esc(GROUPS[s.group].name)}.</b> ${esc(GROUPS[s.group].blurb)}.</p>
       <div class="chips">${examples.map((w) => `<span class="wchip static">${wordHTML(w, s.id)}</span>`).join('')}</div>
@@ -237,7 +283,7 @@ function renderDiagrams(root) {
   root.querySelectorAll('.part').forEach((el) => {
     const open = () => {
       const part = PARTS.find((p) => p.id === el.dataset.part);
-      $('#part-text').innerHTML = `<b style="color:${GROUPS[part.group].color}">${esc(part.name)}.</b> ${esc(part.text)} ${part.sounds.map((x) => soundChip(x)).join(' ')}`;
+      $('#part-text').innerHTML = `<b style="color:${GROUPS[part.group].color}">${esc(part.name)}.</b> ${esc(part.text)} ${(zh() && part.zh ? part.zh : part.sounds).map((x) => soundChip(x)).join(' ')}`;
     };
     el.addEventListener('click', open); el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') open(); });
   });
@@ -261,14 +307,16 @@ async function renderMouth3D(root) {
   root.innerHTML = `
     <div class="card">
       <h2>3D mouth</h2>
-      <p class="note">A stylised, child-friendly model of the inside of the mouth. Pick a sound, or pick a word and watch the tongue, lips and jaw move one sound at a time. Drag to turn it.</p>
+      <p class="note">A stylised model of how we talk, from the lungs to the lips and nose. Pick a word and watch the air come up from the lungs, the voice box buzz (or not), and the tongue, lips and soft palate shape each sound. Drag to turn it.</p>
       <div class="stage" id="stage"><div class="stage-msg" id="stage-msg">Loading 3D…</div></div>
-      <div class="bigword" id="word-now">${wordHTML(st.threeWord)}</div>
+      <div class="bigword" id="word-now">${wordHTML(st.threeWord, null, { tones: true })}</div>
+      ${zh() ? '<p class="note center" id="pitch-note">The lines under each syllable show the voice pitch (tone). Watch the voice box stretch as the pitch goes up.</p>' : ''}
       <div class="row wrap">
-        <select id="w-pick" aria-label="Word">${wordOptions.map((w) => `<option${w === st.threeWord ? ' selected' : ''}>${esc(w)}</option>`).join('')}</select>
+        <select id="w-pick" aria-label="Word">${wordOptions.map((w) => { const i = wordInfo(w); return `<option value="${esc(w)}"${w === st.threeWord ? ' selected' : ''}>${esc(i.zh && i.hanzi ? `${i.hanzi} ${i.pinyin}` : w)}</option>`; }).join('')}</select>
         <button class="btn mint" id="w-play">▶ Say it slowly</button>
         <button class="btn small" id="w-loop">🔁 Loop: off</button>
         <button class="btn small" id="w-stop">■ Stop</button>
+        ${sayBtn(st.threeWord, 'w-say')}
         <button class="btn small sun" id="w-count">🦷 Count the teeth</button>
       </div>
       <p class="note" id="count-note">A child has 20 baby teeth: 10 on top and 10 on the bottom.</p>
@@ -276,8 +324,9 @@ async function renderMouth3D(root) {
         <span class="lbl">Speed</span>
         ${[0.5, 0.75, 1].map((s) => `<button class="btn small spd${(store.ui().slow || 1) === s ? ' on' : ''}" data-spd="${s}">${s}×</button>`).join('')}
         <span class="lbl">View</span>
-        ${[['side', 'Side'], ['angle', '3/4'], ['front', 'Front'], ['other', 'Other side']].map(([v, n]) => `<button class="btn small" data-view="${v}">${n}</button>`).join('')}
+        ${[['side', 'Mouth'], ['airway', 'Lungs to nose'], ['angle', '3/4'], ['front', 'Front'], ['other', 'Other side']].map(([v, n]) => `<button class="btn small" data-view="${v}">${n}</button>`).join('')}
         <label class="toggle"><input type="checkbox" id="cut" ${store.ui().cutaway ? 'checked' : ''}> Cutaway</label>
+        <label class="toggle"><input type="checkbox" id="lbls" ${store.ui().labels !== false ? 'checked' : ''}> Labels</label>
       </div>
     </div>
     <div class="card"><h2>Jump to a sound</h2><div class="legend">${legendHTML()}</div>
@@ -292,10 +341,15 @@ async function renderMouth3D(root) {
     const { createMouth3D } = await import('./mouth3d.js');
     $('#stage-msg')?.remove();
     st.three = createMouth3D(stage, {
+      detail: store.ui().detail ?? 2, lang: currentLang(),
       onCount: (n, where) => { const el = $('#count-note'); if (!el) return; el.innerHTML = where === 'done' ? 'A child has <b>20</b> baby teeth: <b>10</b> on top and <b>10</b> on the bottom.' : `<b style="font-size:26px">${n}</b> (${where})`; },
-      onPhoneme: (pid) => { $('#word-now') && ($('#word-now').innerHTML = wordHTML(st.threeWord, pid)); if (pid) $('#snd-text').innerHTML = `<b style="color:${colorOf(pid)}">${esc(SOUNDS[pid].label)}.</b> ${esc(SOUNDS[pid].how)}`; },
+      onPhoneme: (pid, segIdx) => {
+        const info = wordInfo(st.threeWord), syl = pid ? (info.segs[segIdx]?.syl ?? -1) : -1;
+        if ($('#word-now')) $('#word-now').innerHTML = wordHTML(st.threeWord, pid, { tones: true, activeSyl: syl });
+        if (pid) $('#snd-text').innerHTML = `<b style="color:${colorOf(pid)}">${esc(SOUNDS[pid].label)}.</b> ${esc(SOUNDS[pid].how)}`;
+      },
     });
-    st.three.setCutaway(store.ui().cutaway); st.three.setSpeed(store.ui().slow || 1);
+    st.three.setCutaway(store.ui().cutaway); st.three.setLabels(store.ui().labels !== false); st.three.setSpeed(store.ui().slow || 1);
   } catch (e) {
     stage.innerHTML = `<div class="stage-msg">3D could not start here (${esc(e.message || e)}). The Diagrams tab shows the same shapes in 2D.</div>`;
     return;
@@ -306,11 +360,12 @@ async function renderMouth3D(root) {
     st.threeWord = w; st.focusSound = pid;
     const sel = $('#w-pick'); if (sel) sel.value = w;
     root.querySelectorAll('[data-3d]').forEach((x) => x.classList.toggle('on', x.dataset['3d'] === pid));
-    $('#word-now').innerHTML = wordHTML(w, pid);
-    $('#snd-text').innerHTML = `<b style="color:${colorOf(pid)}">${esc(SOUNDS[pid].label)}.</b> ${esc(SOUNDS[pid].how)} <span class="note">Watch it in <b>${esc(w)}</b>. Tap again for another word.</span>`;
+    $('#word-now').innerHTML = wordHTML(w, pid, { tones: true });
+    const sb = $('#w-say'); if (sb) sb.dataset.say = w;
+    $('#snd-text').innerHTML = `<b style="color:${colorOf(pid)}">${esc(SOUNDS[pid].label)}.</b> ${esc(SOUNDS[pid].how)} <span class="note">Watch it in <b>${esc(wordInfo(w).zh ? `${wordInfo(w).hanzi} ${wordInfo(w).pinyin}` : w)}</b>. Tap again for another word.</span>`;
     st.three.playWord(w, { loop: st.loop });
   };
-  const play = () => { st.focusSound = null; root.querySelectorAll('[data-3d].on').forEach((x) => x.classList.remove('on')); st.threeWord = $('#w-pick').value; $('#word-now').innerHTML = wordHTML(st.threeWord); st.three.playWord(st.threeWord, { loop: st.loop }); };
+  const play = () => { st.focusSound = null; root.querySelectorAll('[data-3d].on').forEach((x) => x.classList.remove('on')); st.threeWord = $('#w-pick').value; $('#word-now').innerHTML = wordHTML(st.threeWord, null, { tones: true }); const sb = $('#w-say'); if (sb) sb.dataset.say = st.threeWord; st.three.playWord(st.threeWord, { loop: st.loop }); };
   $('#w-play').addEventListener('click', play);
   $('#w-pick').addEventListener('change', play);
   $('#w-count').addEventListener('click', () => st.three.countTeeth());
@@ -319,6 +374,7 @@ async function renderMouth3D(root) {
   root.querySelectorAll('[data-spd]').forEach((b) => b.addEventListener('click', () => { store.setUi({ slow: Number(b.dataset.spd) }); st.three.setSpeed(Number(b.dataset.spd)); root.querySelectorAll('.spd').forEach((x) => x.classList.toggle('on', x === b)); }));
   root.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => st.three.view(b.dataset.view)));
   $('#cut').addEventListener('change', (e) => { store.setUi({ cutaway: e.target.checked }); st.three.setCutaway(e.target.checked); });
+  $('#lbls').addEventListener('change', (e) => { store.setUi({ labels: e.target.checked }); st.three.setLabels(e.target.checked); });
   root.querySelectorAll('[data-3d]').forEach((b) => b.addEventListener('click', () => jumpToSound(b.dataset['3d'])));
   if (st.threeSound) { jumpToSound(st.threeSound); st.threeSound = null; }
   window.__three = st.three;
@@ -329,7 +385,7 @@ async function renderMouth3D(root) {
 function deckList() {
   const decks = DECKS.map((d) => ({ id: d.id, title: d.title, desc: d.desc, words: d.words }));
   const custom = store.customWords();
-  if (custom.length) decks.push({ id: 'mine', title: 'My words', desc: 'Words added by a grown-up. Sounds are split by a rough guess.', words: custom });
+  if (custom.length) decks.push({ id: 'mine', title: 'My words', desc: zh() ? 'Words added by a grown-up, split into sounds from their pinyin.' : 'Words added by a grown-up. Sounds are split by a rough guess.', words: custom });
   const fl = store.flags();
   const flagged = Object.keys(fl).filter((w) => fl[w].v > 0);
   decks.unshift({ id: 'flagged', title: 'Flagged words', desc: 'Words marked tricky or really tricky.', words: flagged });
@@ -358,7 +414,9 @@ function renderWords(root) {
     </div>
     ${word ? `<div class="card flash" id="flash">
       <div class="note center">${(st.cardIdx % st.deckOrder.length) + 1} of ${st.deckOrder.length}</div>
-      <div class="bigword huge">${wordHTML(word)}</div>
+      <div class="bigword huge">${wordHTML(word, null, { tones: true })}</div>
+      ${wordInfo(word).gloss ? `<p class="center gloss">${esc(wordInfo(word).gloss)}</p>` : ''}
+      <div class="row" style="justify-content:center">${sayBtn(word)}</div>
       <div class="chips center">${soundsOf(word).map((p, i) => soundChip(p)).join('')}</div>
       <p class="center q">Say it. How did it feel?</p>
       <div class="flags">
@@ -375,8 +433,8 @@ function renderWords(root) {
     <div class="card"><h2>This deck</h2>
       <div class="chips">${deck.words.map((w) => `<button class="wchip ${fl[w] ? ['easy', 'tricky', 'hard'][fl[w].v] : 'blank'}" data-jump="${esc(w)}">${wordHTML(w)}</button>`).join('')}</div></div>
     <div class="card"><h2>Add words</h2>
-      <p class="note">Type words from a book or a list, separated by commas. We split them into sounds with a rough guess (colours may be a little off for odd spellings).</p>
-      <div class="row"><input id="add-words" type="text" placeholder="e.g. fox, thunder, church"><button class="btn small mint" id="add-go">Add</button></div></div>`;
+      ${zh() ? '<p class="note">Type pinyin with tone numbers or tone marks, with the characters if you like. Separate words with commas.</p>' : '<p class="note">Type words from a book or a list, separated by commas. We split them into sounds with a rough guess (colours may be a little off for odd spellings).</p>'}
+      <div class="row"><input id="add-words" type="text" placeholder="${zh() ? 'e.g. 书 shu1, 小狗 xiao3 gou3, 月亮 yuè liang' : 'e.g. fox, thunder, church'}"><button class="btn small mint" id="add-go">Add</button></div></div>`;
   root.querySelectorAll('[data-deck]').forEach((b) => b.addEventListener('click', () => { st.deckId = b.dataset.deck; st.deckOrder = []; renderScreen(); }));
   root.querySelectorAll('[data-flag]').forEach((b) => b.addEventListener('click', () => { store.flagWord(word, Number(b.dataset.flag)); st.cardIdx++; renderScreen(); }));
   const nx = $('#c-next'); if (nx) {
@@ -386,7 +444,9 @@ function renderWords(root) {
   }
   root.querySelectorAll('[data-jump]').forEach((b) => b.addEventListener('click', () => { const i = st.deckOrder.indexOf(b.dataset.jump); if (i >= 0) { st.cardIdx = i; renderScreen(); window.scrollTo({ top: 0 }); } }));
   $('#add-go').addEventListener('click', () => {
-    const list = $('#add-words').value.split(/[,\n]/).map((w) => w.trim().toLowerCase().replace(/[^a-z]/g, '')).filter(Boolean);
+    const raw = $('#add-words').value.split(/[,，\n]/).map((w) => w.trim()).filter(Boolean);
+    const list = zh() ? raw.filter((w) => wordInfo(w).segs.length) : raw.map((w) => w.toLowerCase().replace(/[^a-z]/g, '')).filter(Boolean);
+    if (zh() && list.length < raw.length) toast('Some words had no pinyin I could read, so they were skipped.', true);
     if (!list.length) return;
     store.addCustomWords(list); st.deckId = 'mine'; st.deckOrder = []; toast(`Added ${list.length} word${list.length > 1 ? 's' : ''}.`); renderScreen();
   });
@@ -409,6 +469,9 @@ function renderDrawer() {
   const vs = store.versions();
   const ss = store.syncState;
   $('#drawer-body').innerHTML = `
+    <div class="card"><h2>Language</h2>
+      <p class="note">Switches every tab (survey, videos, diagrams, 3D mouth and words) between English and Mandarin Chinese sounds. Answers are kept separately for each language.</p>
+      <div class="toggle2"><button class="btn lang${zh() ? '' : ' on'}" data-lang="en">English</button><button class="btn lang${zh() ? ' on' : ''}" data-lang="zh">中文 Mandarin</button></div></div>
     <div class="card"><h2>Person</h2>
       <p class="note">Everything (survey, flags, notes) is saved per person.</p>
       <div class="row wrap"><select id="s-person">${store.profiles().map((x) => `<option value="${x.id}"${x.id === p.id ? ' selected' : ''}>${esc(x.name)}${x.locked ? ' 🔒' : ''}</option>`).join('')}</select>
@@ -429,7 +492,8 @@ function renderDrawer() {
         <div class="mini">${Object.entries(v.snapshot?.heat || {}).filter(([, d]) => d.heat > 0).sort((a, b) => b[1].heat - a[1].heat).slice(0, 8).map(([pid, d]) => soundChip(pid, `<small>${Math.round(d.heat * 100)}%</small>`)).join('') || '<span class="note">No tricky sounds then.</span>'}</div></li>`).join('')}</ul>` : '<p class="note">No versions yet. Lock in the survey or save a snapshot.</p>'}
     </div>
     <div class="card"><h2>3D mouth</h2>
-      <label class="toggle"><input type="checkbox" id="s-cut" ${store.ui().cutaway ? 'checked' : ''}> Cutaway view by default</label></div>
+      <label class="toggle"><input type="checkbox" id="s-cut" ${store.ui().cutaway ? 'checked' : ''}> Cutaway view by default</label>
+      <label class="toggle"><input type="checkbox" id="s-detail" ${(store.ui().detail ?? 2) >= 2 ? 'checked' : ''}> High detail (4x mesh). Turn off if the 3D feels slow.</label></div>
     <div class="card"><h2>Database</h2>
       <p class="note">Status: <b>${esc(ss.status)}</b> ${esc(ss.detail || '')}</p>
       ${ss.signedIn ? '<div class="row wrap"><button class="btn small sky" id="s-sync">Sync now</button><button class="btn small" id="s-check">Check tables</button><button class="btn small" id="s-out">Sign out</button></div>'
@@ -437,9 +501,10 @@ function renderDrawer() {
       <pre class="note" id="s-out-text"></pre></div>
     <div class="card"><h2>App versions</h2>
       <ul class="log">${APP_VERSIONS.map((v) => `<li><b>v${v.v}</b> <span class="note">${esc(v.date)}</span><div>${esc(v.text)}</div></li>`).join('')}</ul></div>
-    <div class="card"><h2>V1 (archived)</h2>
-      <p class="note">The original lesson app still runs from here.</p>
-      <div class="row wrap"><a class="btn small sun" href="v1/index.html">Open V1 lessons</a><a class="btn small sun" href="v1/public/booth.html">🎙️ Voice Booth</a></div></div>`;
+    <div class="card"><h2>Earlier versions (archived)</h2>
+      <p class="note">Older versions still run from here. They share the same saved answers.</p>
+      <div class="row wrap"><a class="btn small sun" href="v2/index.html">V2: five tabs + lungs-to-nose 3D</a></div>
+      <div class="row wrap" style="margin-top:8px"><a class="btn small sun" href="v1/index.html">V1 lessons</a><a class="btn small sun" href="v1/public/booth.html">🎙️ V1 Voice Booth</a></div></div>`;
   const rerender = () => { store.setNotes($('#s-notes').value); };
   $('#s-person').addEventListener('change', (e) => { store.setActive(e.target.value); st.surveyMode = null; st.surveyIdx = 0; st.deckOrder = []; renderDrawer(); renderScreen(); });
   $('#s-add').addEventListener('click', () => { const n = prompt('Name of the new person?'); if (n) { store.addProfile(n); st.surveyMode = null; st.surveyIdx = 0; st.deckOrder = []; renderDrawer(); renderScreen(); } });
@@ -450,6 +515,8 @@ function renderDrawer() {
   const ul = $('#s-unlock'); if (ul) ul.addEventListener('click', () => { store.unlock(); renderDrawer(); renderScreen(); });
   $('#s-snap').addEventListener('click', () => { const l = prompt('Name for this snapshot?', 'Snapshot'); if (l !== null) { store.addVersion('snapshot', l || 'Snapshot'); renderDrawer(); } });
   $('#s-cut').addEventListener('change', (e) => store.setUi({ cutaway: e.target.checked }));
+  $('#s-detail').addEventListener('change', (e) => { store.setUi({ detail: e.target.checked ? 2 : 1 }); if (st.tab === 'mouth3d') renderScreen(); });
+  document.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('click', () => { switchLanguage(b.dataset.lang); renderDrawer(); }));
   const si = $('#s-in'); if (si) si.addEventListener('click', async () => { const r = await store.signIn($('#s-email').value, $('#s-pass').value); if (r.error) toast(r.error, true); renderDrawer(); });
   const so = $('#s-out'); if (so) so.addEventListener('click', async () => { await store.signOut(); renderDrawer(); });
   const sy = $('#s-sync'); if (sy) sy.addEventListener('click', async () => { await store.pull(); await store.push(); renderDrawer(); });
@@ -465,7 +532,27 @@ function toast(msg, bad) {
   clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add('hidden'), 3200);
 }
 
+/* ---------- language ---------- */
+
+function applyLanguage(lang) {
+  setLanguage(lang);
+  document.documentElement.lang = lang === 'zh' ? 'zh' : 'en';
+  $('#lang-pill').classList.toggle('hidden', lang !== 'zh');
+  $('#legend').innerHTML = legendHTML();
+  st.sound = SOUND_ORDER.includes(st.sound) ? st.sound : (lang === 'zh' ? 'zh_s' : 'S');
+  if (!WORDS[st.threeWord]) st.threeWord = lang === 'zh' ? '四' : 'sun';
+  st.surveyMode = null; st.surveyIdx = 0; st.deckId = 'recommended'; st.deckOrder = []; st.focusSound = null;
+}
+function switchLanguage(lang) {
+  if (lang === currentLang()) return;
+  store.setUi({ lang });
+  applyLanguage(lang);
+  if (st.three) st.three.setLang(lang);
+  renderScreen();
+}
+
 /* ---------- boot ---------- */
+applyLanguage(store.ui().lang === 'zh' ? 'zh' : 'en');
 
 $('#gear').addEventListener('click', () => openDrawer(true));
 $('#close-drawer').addEventListener('click', () => openDrawer(false));

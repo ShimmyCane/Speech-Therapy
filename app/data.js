@@ -1,5 +1,8 @@
-// Shared data for Felix's Sounds V2: colour groups, sounds, words, survey, videos.
+// Shared data for Felix's Sounds: colour groups, sounds, words, survey, videos.
 // One colour per "way the mouth moves". The same colours are used on every tab.
+// Two language packs (English, Mandarin) fill the same containers; setLanguage() swaps them.
+import { N, P } from './params.js';
+import { buildZh } from './data_zh.js';
 
 export const GROUPS = {
   lips:   { name: 'Lips',            color: '#e8336d', tint: '#ffd9e5', blurb: 'Lips press or round' },
@@ -11,13 +14,10 @@ export const GROUPS = {
   back:   { name: 'Back of tongue',  color: '#1f9d55', tint: '#cdf1dc', blurb: 'Back of tongue lifts to the soft roof' },
   throat: { name: 'Throat',          color: '#7b6f66', tint: '#e8e2dc', blurb: 'Just breath from the throat' },
   vowel:  { name: 'Open vowels',     color: '#5b6b82', tint: '#dde4ee', blurb: 'Mouth open, tongue floats' },
+  front:  { name: 'Tongue front up', color: '#66a80f', tint: '#e2f5c4', blurb: 'Tip down, front of tongue lifts to the roof (j, q, x)' },
+  tone:   { name: 'Tones (pitch)',   color: '#495057', tint: '#e9ecef', blurb: 'The voice goes high, low, up or down' },
 };
 
-// Mouth parameters. jaw 0..1 open. back/mid/blade/tipY = tongue height 0 (low) .. 1 (touching roof).
-// tipZ: where the tip points (0.66 behind lower teeth ... 1 between teeth). groove 0..1, sides -1..1.
-const N = { jaw: .18, round: 0, spread: 0, lipsShut: 0, back: .25, mid: .25, blade: .2, tipY: .15, tipZ: .66,
-  groove: 0, sides: 0, voiced: 0, nasal: 0, teethLip: 0, air: 0 };
-const P = (o) => ({ ...N, ...o });
 
 // id: [ipa, label, group, place+manner words, how-to sentence, example, params]
 const RAW = [
@@ -65,8 +65,11 @@ const RAW = [
 
 export const SOUNDS = {};
 export const SOUND_ORDER = [];
+// Where stops close the mouth (px along the mouth) and which ones come with a big puff of air.
+const CLOSE_EN = { P: 470, B: 470, T: 436, D: 436, K: 262, G: 262, CH: 436, JH: 436 };
+const ASP_EN = { P: 1, T: 1, K: 1, CH: 1 };
 for (const [id, spell, label, group, how, params] of RAW) {
-  SOUNDS[id] = { id, spell, label, group, how, params };
+  SOUNDS[id] = { id, spell, label, group, how, params: { ...params, asp: ASP_EN[id] || 0 }, close: CLOSE_EN[id] || 0, kind: 'sound' };
   SOUND_ORDER.push(id);
 }
 export const REST = { ...N };
@@ -270,7 +273,7 @@ export function guessSegments(word) {
   return segs;
 }
 export function wordInfo(word) {
-  return WORDS[word] || { word, segs: guessSegments(word), custom: true };
+  return WORDS[word] || (LANG === 'zh' ? ZH.info(word) : { word, segs: guessSegments(word), custom: true });
 }
 export function soundsOf(word) {
   return wordInfo(word).segs.flatMap((s) => s.p);
@@ -329,3 +332,24 @@ export const REFERENCES = [
   { title: 'Pink Trombone', url: 'https://dood.al/pinktrombone/', note: 'Play with a moving vocal tract and hear it. Great for curiosity, not for lessons.' },
   { title: 'Three.js examples', url: 'https://threejs.org/examples/', note: 'The 3D library used for our mouth model, if you want to build new views.' },
 ];
+
+// ---------- language packs ----------
+const snapshot = () => ({
+  sounds: { ...SOUNDS }, order: [...SOUND_ORDER], words: { ...WORDS }, decks: [...DECKS], survey: { ...SURVEY },
+  videoTopics: [...VIDEO_TOPICS], videos: [...VIDEOS], refs: [...REFERENCES],
+});
+const EN = snapshot();
+let ZH = null;
+let LANG = 'en';
+const refill = (obj, src) => { for (const k of Object.keys(obj)) delete obj[k]; Object.assign(obj, src); };
+const refillArr = (arr, src) => { arr.length = 0; arr.push(...src); };
+export const currentLang = () => LANG;
+export function setLanguage(lang) {
+  if (lang === 'zh' && !ZH) ZH = buildZh();
+  const pk = lang === 'zh' ? ZH : EN;
+  LANG = lang === 'zh' ? 'zh' : 'en';
+  refill(SOUNDS, pk.sounds); refillArr(SOUND_ORDER, pk.order); refill(WORDS, pk.words); refillArr(DECKS, pk.decks);
+  refill(SURVEY, pk.survey); refillArr(VIDEO_TOPICS, pk.videoTopics); refillArr(VIDEOS, pk.videos); refillArr(REFERENCES, pk.refs);
+}
+// Groups that have at least one sound in the current language, in display order.
+export const activeGroups = () => Object.keys(GROUPS).filter((g) => SOUND_ORDER.some((p) => SOUNDS[p].group === g));

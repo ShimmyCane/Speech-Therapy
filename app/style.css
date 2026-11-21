@@ -79,7 +79,7 @@ button.btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--
 .hrow { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
 .hname { width: 112px; flex: none; font-size: 13px; line-height: 1.15; }
 .tiles { display: flex; flex-wrap: wrap; gap: 6px; }
-.tile { position: relative; overflow: hidden; width: 54px; height: 62px; padding: 0; border: 3px solid var(--c); border-radius: 12px; background: #fff; font: inherit; cursor: pointer; }
+.tile { position: relative; overflow: hidden; min-width: 54px; height: 62px; padding: 0 5px; border: 3px solid var(--c); border-radius: 12px; background: #fff; font: inherit; cursor: pointer; }
 .tile .bar { position: absolute; left: 0; right: 0; bottom: 0; height: var(--h); background: var(--c); opacity: .85; }
 .tile.none { border-style: dashed; background: #fff; }
 .tile.cool { background: var(--t); }
@@ -98,7 +98,7 @@ button.btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--
 #sound-card { border-top: 12px solid var(--c); }
 
 /* 3D */
-.stage { position: relative; height: min(58vh, 460px); min-height: 280px; background: radial-gradient(circle at 60% 40%, #fff, #e9f1ff); border: 3px solid var(--ink); border-radius: 18px; overflow: hidden; touch-action: none; }
+.stage { position: relative; height: min(68vh, 600px); min-height: 320px; background: radial-gradient(circle at 60% 40%, #fff, #e9f1ff); border: 3px solid var(--ink); border-radius: 18px; overflow: hidden; touch-action: none; }
 .stage-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; font-size: 18px; color: var(--muted); }
 select, input[type=text], input[type=email], input[type=password], textarea { font: inherit; font-size: 17px; color: var(--ink); padding: 8px 10px; border: 3px solid var(--ink); border-radius: 12px; background: #fff; width: 100%; max-width: 100%; }
 select { width: auto; min-height: 48px; }
@@ -135,3 +135,33 @@ pre.note { white-space: pre-wrap; font-size: 14px; }
   .hname { width: 78px; font-size: 12px; } .tile { width: 46px; height: 56px; }
   .flags { grid-template-columns: 1fr; }
 }
+
+/* 3D labels that follow the model */
+.lbl3d-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.lbl3d { position: absolute; left: 0; top: 0; font-size: 12px; font-weight: 700; line-height: 1.3; white-space: nowrap; background: rgba(255,255,255,.88); border: 2px solid var(--ink); border-radius: 999px; padding: 0 7px; color: var(--ink); }
+.lbl3d.on { background: #fff6c9; box-shadow: 0 0 0 3px rgba(255,210,63,.55); }
+
+/* Mandarin words: characters over coloured pinyin, with pitch lines */
+.zhw { display: inline-flex; gap: .18em; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+.syl { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.05; border-radius: 12px; padding: 2px 4px; }
+.syl.now { background: #fff6c9; box-shadow: 0 0 0 3px rgba(255,210,63,.6); }
+.syl .hz { font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "Heiti SC", sans-serif; font-weight: 700; color: var(--ink); }
+.syl .py { font-size: .42em; font-weight: 800; letter-spacing: .5px; }
+.bigword .syl .hz { font-size: 1em; }
+.wchip .syl .py { font-size: .6em; }
+.wchip .zhw { gap: 4px; }
+svg.tone { display: block; margin-top: 2px; }
+svg.tone .base { stroke: #dee2e6; stroke-width: 1.5; }
+svg.tone .pitch { fill: none; stroke: var(--ink); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
+svg.tone .pitch.light { stroke-dasharray: 2 5; }
+svg.tone.on .pitch { stroke: #e8336d; stroke-width: 4; }
+svg.tone .sandhi { fill: #f59f00; }
+.wchip svg.tone { display: none; }
+.tone-big { display: grid; place-items: center; padding: 18px; }
+.tone-big svg.tone .pitch { stroke-width: 7; }
+.gloss { font-family: "Patrick Hand", cursive; font-size: 22px !important; color: var(--muted); margin: -4px 0 6px !important; }
+.seq { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
+.seqstep { width: 150px; text-align: center; font-size: 15px; }
+.diagram.small { padding: 2px; border-width: 2px; border-radius: 12px; }
+.seq .arrow { font-size: 24px; color: var(--muted); }
+.btn.lang.on { background: var(--sun); }
